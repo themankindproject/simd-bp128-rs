@@ -1,0 +1,31 @@
+[package]
+name = "simd-bp128-fuzz"
+version = "0.0.0"
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+
+[dependencies.simd-bp128]
+path = ".."
+
+[[bin]]
+name = "roundtrip"
+path = "fuzz_targets/roundtrip.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "decompress_only"
+path = "fuzz_targets/decompress_only.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "compress_only"
+path = "fuzz_targets/compress_only.rs"
+test = false
+doc = false
