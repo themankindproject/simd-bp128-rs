@@ -1,0 +1,72 @@
+//! Bit width calculation utilities.
+
+/// Returns the minimum number of bits required to represent a value.
+pub(crate) fn required_bit_width(max_value: u32) -> u8 {
+    if max_value == 0 {
+        0
+    } else {
+        32 - max_value.leading_zeros() as u8
+    }
+}
+
+/// Returns the number of bytes needed to store a full 128-value block.
+pub(crate) fn packed_block_size(bit_width: u8) -> usize {
+    if bit_width > 32 {
+        return 0;
+    }
+    if bit_width == 0 {
+        0
+    } else {
+        ((128 * bit_width as usize) + 7) / 8
+    }
+}
+
+/// Returns the number of bytes needed to store a partial block.
+pub(crate) fn packed_partial_block_size(num_values: usize, bit_width: u8) -> usize {
+    if bit_width == 0 || num_values == 0 {
+        0
+    } else {
+        ((num_values * bit_width as usize) + 7) / 8
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_required_bit_width() {
+        assert_eq!(required_bit_width(0), 0);
+        assert_eq!(required_bit_width(1), 1);
+        assert_eq!(required_bit_width(2), 2);
+        assert_eq!(required_bit_width(3), 2);
+        assert_eq!(required_bit_width(4), 3);
+        assert_eq!(required_bit_width(7), 3);
+        assert_eq!(required_bit_width(8), 4);
+        assert_eq!(required_bit_width(15), 4);
+        assert_eq!(required_bit_width(16), 5);
+        assert_eq!(required_bit_width(255), 8);
+        assert_eq!(required_bit_width(256), 9);
+        assert_eq!(required_bit_width(65535), 16);
+        assert_eq!(required_bit_width(65536), 17);
+        assert_eq!(required_bit_width(u32::MAX), 32);
+    }
+
+    #[test]
+    fn test_packed_block_size() {
+        assert_eq!(packed_block_size(0), 0);
+        assert_eq!(packed_block_size(1), 16);
+        assert_eq!(packed_block_size(2), 32);
+        assert_eq!(packed_block_size(4), 64);
+        assert_eq!(packed_block_size(8), 128);
+        assert_eq!(packed_block_size(16), 256);
+        assert_eq!(packed_block_size(32), 512);
+    }
+
+    #[test]
+    fn test_packed_block_size_invalid_bit_width() {
+        assert_eq!(packed_block_size(33), 0);
+        assert_eq!(packed_block_size(255), 0);
+        assert_eq!(packed_block_size(64), 0);
+    }
+}
