@@ -4,7 +4,6 @@ use crate::error::{CompressionError, Error};
 use crate::simd::scalar::ScalarBackend;
 use crate::BLOCK_SIZE;
 
-/// Current format version
 const FORMAT_VERSION: u8 = 1;
 
 /// Compresses an array of u32 integers using the BP128 algorithm.
@@ -23,9 +22,9 @@ const FORMAT_VERSION: u8 = 1;
 /// - `input_len`  – original number of u32 values (little-endian)
 /// - `num_blocks` – number of blocks (little-endian); the last block may be partial
 /// - `bit_widths` – one byte per block giving the bit-width used to pack that block;
-///                  `0` means every value in the block is zero (no packed bytes emitted)
+///   `0` means every value in the block is zero (no packed bytes emitted)
 /// - `packed_data`– all blocks concatenated; full blocks occupy `bit_width × 128 / 8` bytes,
-///                  partial blocks occupy `ceil(bit_width × remaining / 8)` bytes
+///   partial blocks occupy `ceil(bit_width × remaining / 8)` bytes
 ///
 /// # Errors
 ///
@@ -54,36 +53,22 @@ pub fn compress(input: &[u32]) -> Result<Vec<u8>, Error> {
 
     let num_full_blocks: usize = input.len() / BLOCK_SIZE;
     let remaining: usize = input.len() % BLOCK_SIZE;
-    // Full blocks + optional single trailing partial block.
     let num_blocks: usize = num_full_blocks + usize::from(remaining > 0);
 
-    // num_blocks ≤ ceil(u32::MAX / 128), well within u32 range.
     debug_assert!(num_blocks <= u32::MAX as usize, "num_blocks overflows u32");
 
-    // Upper-bound capacity: assume every block needs the full 32-bit width
-    // (128 values × 32 bits / 8 = 512 bytes per block). Actual output is
-    // usually far smaller; `data_offset` tracks the exact write cursor.
     let max_size: usize = 1 + 8 + num_blocks + num_blocks * packed_block_size(32);
     let mut output: Vec<u8> = Vec::with_capacity(max_size);
 
-    // --- Write header -------------------------------------------------------
     output.push(FORMAT_VERSION);
     output.extend_from_slice(&(input.len() as u32).to_le_bytes());
     output.extend_from_slice(&(num_blocks as u32).to_le_bytes());
 
-    // Reserve space for bit_widths; filled in per-block below.
     let bit_widths_offset: usize = output.len();
     output.resize(bit_widths_offset + num_blocks, 0);
 
-    // `data_offset` tracks the write cursor within the packed-data region.
     let mut data_offset: usize = output.len();
 
-    // --- Process full blocks ------------------------------------------------
-    //
-    // We use a bitwise-OR accumulator rather than tracking the running maximum.
-    // This is valid because the highest set bit of (a | b | …) equals that of
-    // max(a, b, …): OR can only *set* bits, so the MSB position of the OR
-    // equals the MSB position of the largest value in the block.
     for block_idx in 0..num_full_blocks {
         let start: usize = block_idx * BLOCK_SIZE;
         let block: &[u32] = &input[start..start + BLOCK_SIZE];
@@ -93,22 +78,16 @@ pub fn compress(input: &[u32]) -> Result<Vec<u8>, Error> {
         let acc = block.iter().fold(0u32, |a, &v| a | v);
         let bit_width = required_bit_width(acc);
 
-        // Write bit_width unconditionally; hoisted above the packed_size check
-        // to avoid the duplicate write that existed when it appeared in both
-        // branches separately.
         output[bit_widths_offset + block_idx] = bit_width;
 
         let packed_size: usize = packed_block_size(bit_width);
 
-        // bit_width == 0 means every value is zero; no bytes need to be written.
         if packed_size == 0 {
             continue;
         }
 
         output.resize(data_offset + packed_size, 0);
 
-        // SAFETY: block.len() == BLOCK_SIZE is guaranteed by the slice bounds
-        // above, so try_into() is infallible here.
         let block_array: [u32; BLOCK_SIZE] = block
             .try_into()
             .expect("block slice length equals BLOCK_SIZE; conversion is infallible");
@@ -117,7 +96,6 @@ pub fn compress(input: &[u32]) -> Result<Vec<u8>, Error> {
         data_offset += packed_size;
     }
 
-    // --- Process trailing partial block (if any) ----------------------------
     if remaining > 0 {
         let start: usize = num_full_blocks * BLOCK_SIZE;
         let block: &[u32] = &input[start..];
@@ -125,17 +103,13 @@ pub fn compress(input: &[u32]) -> Result<Vec<u8>, Error> {
         let acc: u32 = block.iter().fold(0u32, |a, &v| a | v);
         let bit_width: u8 = required_bit_width(acc);
 
-        // Record the bit_width for the partial block.
         output[bit_widths_offset + num_full_blocks] = bit_width;
 
         let packed_size: usize = packed_partial_block_size(remaining, bit_width);
 
-        // bit_width == 0 means every value is zero; skip the pack call entirely.
         if packed_size > 0 {
             output.resize(data_offset + packed_size, 0);
             ScalarBackend::pack_partial_block(block, bit_width, &mut output[data_offset..])?;
-            // Keep data_offset consistent so the debug_assert below holds and
-            // any future code appended here sees a correct write cursor.
             data_offset += packed_size;
         }
     }
@@ -143,7 +117,7 @@ pub fn compress(input: &[u32]) -> Result<Vec<u8>, Error> {
     debug_assert_eq!(
         output.len(),
         data_offset,
-        "data_offset must equal output length; a missing `data_offset +=` would be caught here"
+        "data_offset must equal output length"
     );
 
     Ok(output)

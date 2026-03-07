@@ -3,7 +3,7 @@ use crate::simd::scalar::ScalarBackend;
 use crate::simd::SimdBackend;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BackendType {
+pub(crate) enum BackendType {
     Scalar,
     #[cfg(target_arch = "x86_64")]
     Sse,
@@ -13,7 +13,7 @@ pub enum BackendType {
     Avx512,
 }
 
-pub fn detect_best_backend() -> BackendType {
+pub(crate) fn detect_best_backend() -> BackendType {
     #[cfg(target_arch = "x86_64")]
     {
         if is_x86_feature_detected!("avx512f") {
@@ -30,14 +30,14 @@ pub fn detect_best_backend() -> BackendType {
     BackendType::Scalar
 }
 
-pub fn get_backend() -> BackendType {
+pub(crate) fn get_backend() -> BackendType {
     use std::sync::OnceLock;
 
     static BACKEND: OnceLock<BackendType> = OnceLock::new();
     *BACKEND.get_or_init(detect_best_backend)
 }
 
-pub fn pack_block_dispatch(
+pub(crate) fn pack_block_dispatch(
     input: &[u32; 128],
     bit_width: u8,
     output: &mut [u8],
@@ -55,7 +55,7 @@ pub fn pack_block_dispatch(
     }
 }
 
-pub fn unpack_block_dispatch(
+pub(crate) fn unpack_block_dispatch(
     input: &[u8],
     bit_width: u8,
     output: &mut [u32; 128],

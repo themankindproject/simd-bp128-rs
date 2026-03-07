@@ -1,0 +1,56 @@
+[package]
+name = "simd-bp128"
+version = "0.1.0"
+edition = "2021"
+authors = ["Ashutosh Kumar <kumarashutosh34169@gmail.com>"]
+description = "SIMD-accelerated bit packing compression for u32 arrays"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/themankindproject/simd-bp128"
+keywords = ["simd", "compression", "bitpacking", "performance"]
+categories = ["compression", "algorithms"]
+rust-version = "1.70"
+
+[dependencies]
+
+[dev-dependencies]
+criterion = { version = "0.8", features = ["html_reports"] }
+proptest = "1.4"
+rand = "0.8"
+
+[[bench]]
+name = "compression"
+harness = false
+
+[[bench]]
+name = "block_level"
+harness = false
+
+[[bench]]
+name = "mixed_data"
+harness = false
+
+[[bench]]
+name = "throughput"
+harness = false
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
+incremental = false
+
+[profile.bench]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+debug = false
+incremental = false
+
+[profile.dev]
+opt-level = 1
+debug = true
+
+[profile.test]
+opt-level = 2

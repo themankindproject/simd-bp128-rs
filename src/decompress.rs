@@ -107,13 +107,14 @@ pub fn decompress(input: &[u8]) -> Result<Vec<u32>, DecompressionError> {
             packed_partial_block_size(block_values, bit_width)
         };
 
-        min_packed_size = min_packed_size.checked_add(block_size).ok_or_else(|| {
-            DecompressionError::TruncatedData {
-                position: HEADER_SIZE,
-                needed: usize::MAX,
-                have: input.len(),
-            }
-        })?;
+        min_packed_size =
+            min_packed_size
+                .checked_add(block_size)
+                .ok_or(DecompressionError::TruncatedData {
+                    position: HEADER_SIZE,
+                    needed: usize::MAX,
+                    have: input.len(),
+                })?;
 
         values_to_process = values_to_process.saturating_sub(block_values);
     }
@@ -131,7 +132,7 @@ pub fn decompress(input: &[u8]) -> Result<Vec<u32>, DecompressionError> {
     let mut data_pos = HEADER_SIZE + num_blocks;
     let mut values_remaining = total_count;
 
-    for (_block_idx, &bit_width) in bit_widths.iter().enumerate() {
+    for &bit_width in bit_widths.iter() {
         if values_remaining == 0 {
             break;
         }
@@ -152,7 +153,7 @@ pub fn decompress(input: &[u8]) -> Result<Vec<u32>, DecompressionError> {
         let data_end =
             data_pos
                 .checked_add(packed_size)
-                .ok_or_else(|| DecompressionError::TruncatedData {
+                .ok_or(DecompressionError::TruncatedData {
                     position: data_pos,
                     needed: packed_size,
                     have: 0,
@@ -233,13 +234,14 @@ pub fn decompress(input: &[u8]) -> Result<Vec<u32>, DecompressionError> {
                 output.extend_from_slice(&block);
             }
 
-            data_pos = data_pos.checked_add(packed_size).ok_or_else(|| {
-                DecompressionError::TruncatedData {
-                    position: data_pos,
-                    needed: packed_size,
-                    have: 0,
-                }
-            })?;
+            data_pos =
+                data_pos
+                    .checked_add(packed_size)
+                    .ok_or(DecompressionError::TruncatedData {
+                        position: data_pos,
+                        needed: packed_size,
+                        have: 0,
+                    })?;
         } else {
             output.extend(std::iter::repeat(0u32).take(block_values));
         }

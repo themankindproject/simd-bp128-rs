@@ -1,3 +1,8 @@
+//! BP128 compression library for integer arrays.
+//!
+//! Provides compression and decompression of `u32` arrays using the BP128
+//! variable-bit-width algorithm, with SIMD acceleration support.
+
 pub use compress::compress;
 pub use decompress::decompress;
 pub use error::{CompressionError, DecompressionError, Error};
