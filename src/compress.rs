@@ -2,41 +2,47 @@ use crate::bitwidth::{packed_block_size, packed_partial_block_size, required_bit
 use crate::dispatch::pack_block_dispatch;
 use crate::error::{CompressionError, Error};
 use crate::simd::scalar::ScalarBackend;
-use crate::BLOCK_SIZE;
+use crate::{BLOCK_SIZE, FORMAT_VERSION};
 
-const FORMAT_VERSION: u8 = 1;
-
-/// Compresses an array of u32 integers using the BP128 algorithm.
+/// Compresses an array of `u32` integers using the BP128 algorithm.
 ///
-/// The BP128 algorithm divides input into blocks of 128 values and stores each
-/// block using the minimum number of bits required to represent the maximum value
-/// in that block.
+/// BP128 divides input into blocks of 128 values and stores each block using the
+/// minimum number of bits required to represent the maximum value in that block.
+/// This achieves variable-bit-width compression optimized for integer arrays.
 ///
-/// # Format
+/// # Binary Format
 ///
 /// ```text
-/// [version: u8][input_len: u32][num_blocks: u32][bit_widths: u8 × num_blocks][packed_data: u8[]]
+/// [version: u8][input_len: u32 LE][num_blocks: u32 LE][bit_widths: u8 × N][packed_data: u8[]]
 /// ```
 ///
-/// - `version`    – format version byte (currently `1`)
-/// - `input_len`  – original number of u32 values (little-endian)
-/// - `num_blocks` – number of blocks (little-endian); the last block may be partial
-/// - `bit_widths` – one byte per block giving the bit-width used to pack that block;
-///   `0` means every value in the block is zero (no packed bytes emitted)
-/// - `packed_data`– all blocks concatenated; full blocks occupy `bit_width × 128 / 8` bytes,
-///   partial blocks occupy `ceil(bit_width × remaining / 8)` bytes
+/// | Field | Type | Description |
+/// |-------|------|-------------|
+/// | version | [u8] | Format version (currently 1) |
+/// | input_len | [u32] LE | Original number of u32 values |
+/// | num_blocks | [u32] LE | Number of blocks (last may be partial) |
+/// | bit_widths | [u8] | One byte per block (0 = all zeros) |
+/// | packed_data | [u8] | Bit-packed values, blocks concatenated |
+///
+/// # Performance
+///
+/// - Time complexity: O(n) where n = input.len()
+/// - Space complexity: O(n) for output buffer
+/// - Allocates once: output buffer sized to worst case, then truncated
 ///
 /// # Errors
 ///
-/// Returns [`CompressionError::InputTooLarge`] if `input.len()` exceeds `u32::MAX`.
+/// Returns [`Error::CompressionError`] if:
+/// - [`CompressionError::InputTooLarge`] - input.len() > u32::MAX
 ///
 /// # Example
 ///
 /// ```
 /// use simd_bp128::compress;
 ///
-/// let data: Vec<u32> = (0..256).map(|i| i % 100).collect();
+/// let data: Vec<u32> = (0..256).map(|i| i % 1000).collect();
 /// let compressed = compress(&data).unwrap();
+/// assert!(compressed.len() < data.len() * 4);
 /// ```
 pub fn compress(input: &[u32]) -> Result<Vec<u8>, Error> {
     if input.is_empty() {
@@ -57,6 +63,7 @@ pub fn compress(input: &[u32]) -> Result<Vec<u8>, Error> {
 
     debug_assert!(num_blocks <= u32::MAX as usize, "num_blocks overflows u32");
 
+    // Worst-case size: every block packed at full 32-bit width.
     let max_size: usize = 1 + 8 + num_blocks + num_blocks * packed_block_size(32);
     let mut output: Vec<u8> = Vec::with_capacity(max_size);
 
@@ -65,9 +72,12 @@ pub fn compress(input: &[u32]) -> Result<Vec<u8>, Error> {
     output.extend_from_slice(&(num_blocks as u32).to_le_bytes());
 
     let bit_widths_offset: usize = output.len();
-    output.resize(bit_widths_offset + num_blocks, 0);
 
-    let mut data_offset: usize = output.len();
+    // Pre-size the entire buffer to max_size once. All subsequent writes go
+    // directly into existing slots — no reallocation or resize inside the loop.
+    output.resize(max_size, 0);
+
+    let mut data_offset: usize = bit_widths_offset + num_blocks;
 
     for block_idx in 0..num_full_blocks {
         let start: usize = block_idx * BLOCK_SIZE;
@@ -81,12 +91,9 @@ pub fn compress(input: &[u32]) -> Result<Vec<u8>, Error> {
         output[bit_widths_offset + block_idx] = bit_width;
 
         let packed_size: usize = packed_block_size(bit_width);
-
         if packed_size == 0 {
             continue;
         }
-
-        output.resize(data_offset + packed_size, 0);
 
         let block_array: [u32; BLOCK_SIZE] = block
             .try_into()
@@ -106,13 +113,14 @@ pub fn compress(input: &[u32]) -> Result<Vec<u8>, Error> {
         output[bit_widths_offset + num_full_blocks] = bit_width;
 
         let packed_size: usize = packed_partial_block_size(remaining, bit_width);
-
         if packed_size > 0 {
-            output.resize(data_offset + packed_size, 0);
             ScalarBackend::pack_partial_block(block, bit_width, &mut output[data_offset..])?;
             data_offset += packed_size;
         }
     }
+
+    // Trim to actual bytes written — this is O(1), no reallocation.
+    output.truncate(data_offset);
 
     debug_assert_eq!(
         output.len(),

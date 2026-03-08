@@ -1,50 +1,5 @@
 use crate::error::Error;
 use crate::simd::SimdBackend;
-
-const fn make_mask(n: u32) -> u32 {
-    if n == 0 {
-        0
-    } else {
-        (1 << n) - 1
-    }
-}
-
-const MASK_LOOKUP: [u32; 33] = [
-    make_mask(0),
-    make_mask(1),
-    make_mask(2),
-    make_mask(3),
-    make_mask(4),
-    make_mask(5),
-    make_mask(6),
-    make_mask(7),
-    make_mask(8),
-    make_mask(9),
-    make_mask(10),
-    make_mask(11),
-    make_mask(12),
-    make_mask(13),
-    make_mask(14),
-    make_mask(15),
-    make_mask(16),
-    make_mask(17),
-    make_mask(18),
-    make_mask(19),
-    make_mask(20),
-    make_mask(21),
-    make_mask(22),
-    make_mask(23),
-    make_mask(24),
-    make_mask(25),
-    make_mask(26),
-    make_mask(27),
-    make_mask(28),
-    make_mask(29),
-    make_mask(30),
-    make_mask(31),
-    u32::MAX,
-];
-
 pub struct ScalarBackend;
 
 impl SimdBackend for ScalarBackend {
@@ -105,43 +60,37 @@ fn pack_n(input: &[u32], bit_width: u8, output: &mut [u8]) -> Result<(), Error> 
         });
     }
 
-    output[..required_bytes].fill(0);
-
-    let value_mask: u32 = if bits_per_value >= 32 {
-        u32::MAX
+    let value_mask: u64 = if bits_per_value >= 32 {
+        u32::MAX as u64
     } else {
-        (1u32 << bits_per_value) - 1
+        (1u64 << bits_per_value) - 1
     };
 
-    let mut bit_pos = 0usize;
+    // Shift-register (accumulator) approach: buffer bits into a u64,
+    // flush whole bytes as they fill up. Eliminates the inner while-loop
+    // and the two integer divisions (bit_pos / 8, bit_pos % 8) per value.
+    let mut acc: u64 = 0;
+    let mut acc_bits: usize = 0;
+    let mut out_idx: usize = 0;
 
-    for &value in input.iter() {
-        let byte_offset = bit_pos / 8;
-        let bit_offset = bit_pos % 8;
+    for &value in input {
+        acc |= (value as u64 & value_mask) << acc_bits;
+        acc_bits += bits_per_value;
 
-        let masked_value = value & value_mask;
-
-        let mut remaining = masked_value;
-        let mut bits_to_write = bits_per_value;
-        let mut current_byte = byte_offset;
-        let mut current_bit_offset = bit_offset;
-
-        while bits_to_write > 0 {
-            let bits_available = 8 - current_bit_offset;
-            let bits_this_write = bits_to_write.min(bits_available);
-
-            let mask = MASK_LOOKUP[bits_this_write];
-            let bits = (remaining & mask) as u8;
-
-            output[current_byte] |= bits << current_bit_offset;
-
-            remaining >>= bits_this_write;
-            bits_to_write -= bits_this_write;
-            current_byte += 1;
-            current_bit_offset = 0;
+        // Flush all complete bytes out of the accumulator.
+        // For small bit widths this may flush several bytes per iteration;
+        // for large ones it may flush zero or one.
+        while acc_bits >= 8 {
+            output[out_idx] = acc as u8;
+            out_idx += 1;
+            acc >>= 8;
+            acc_bits -= 8;
         }
+    }
 
-        bit_pos += bits_per_value;
+    // Flush any remaining bits (< 8) in the final partial byte.
+    if acc_bits > 0 {
+        output[out_idx] = acc as u8;
     }
 
     Ok(())
@@ -180,32 +129,30 @@ fn unpack_n(
         });
     }
 
-    let mut bit_pos = 0usize;
+    let value_mask: u64 = if bits_per_value >= 32 {
+        u32::MAX as u64
+    } else {
+        (1u64 << bits_per_value) - 1
+    };
 
-    for output_i in output.iter_mut().take(num_values) {
-        let byte_offset = bit_pos / 8;
-        let bit_offset = bit_pos % 8;
+    // Mirror of pack_n: drain bits from a u64 accumulator, refilling
+    // from the input byte stream as needed. Eliminates the inner while-loop
+    // and the two integer divisions per value.
+    let mut acc: u64 = 0;
+    let mut acc_bits: usize = 0;
+    let mut in_idx: usize = 0;
 
-        let mut value = 0u32;
-        let mut bits_read = 0usize;
-        let mut current_byte = byte_offset;
-        let mut current_bit_offset = bit_offset;
-
-        while bits_read < bits_per_value {
-            let bits_available = 8 - current_bit_offset;
-            let bits_this_read = (bits_per_value - bits_read).min(bits_available);
-
-            let mask = MASK_LOOKUP[bits_this_read] as u8;
-            let bits = (input[current_byte] >> current_bit_offset) & mask;
-
-            value |= (bits as u32) << bits_read;
-            bits_read += bits_this_read;
-            current_byte += 1;
-            current_bit_offset = 0;
+    for out in output.iter_mut().take(num_values) {
+        // Refill the accumulator until it holds at least bits_per_value bits.
+        while acc_bits < bits_per_value {
+            acc |= (input[in_idx] as u64) << acc_bits;
+            acc_bits += 8;
+            in_idx += 1;
         }
 
-        *output_i = value;
-        bit_pos += bits_per_value;
+        *out = (acc & value_mask) as u32;
+        acc >>= bits_per_value;
+        acc_bits -= bits_per_value;
     }
 
     Ok(())

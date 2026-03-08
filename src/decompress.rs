@@ -2,28 +2,37 @@ use crate::bitwidth::{packed_block_size, packed_partial_block_size};
 use crate::dispatch::unpack_block_dispatch;
 use crate::error::DecompressionError;
 use crate::simd::scalar::ScalarBackend;
-use crate::BLOCK_SIZE;
+use crate::{BLOCK_SIZE, FORMAT_VERSION};
 
 const MAX_DECOMPRESSED_VALUES: usize = 1_000_000_000;
 const MAX_BLOCKS: usize = MAX_DECOMPRESSED_VALUES / 128 + 1;
-const FORMAT_VERSION: u8 = 1;
 
-/// Decompresss data previously compressed with BP128.
+/// Decompresses BP128-compressed data back to an array of `u32` integers.
+///
+/// The decompression process reads the binary format produced by [`compress`]:
+/// 1. Parses header (version, original length, block count)
+/// 2. Reads per-block bit widths
+/// 3. Unpacks each block using the stored bit width
 ///
 /// # Errors
 ///
-/// Returns `Err(DecompressionError)` for malformed input including:
-/// - Header too small
-/// - Truncated data  
-/// - Invalid bit width
-/// - Block count mismatch
+/// Returns `Err(DecompressionError)` if the input is malformed:
+/// - [`DecompressionError::HeaderTooSmall`] - Input shorter than 9 bytes
+/// - [`DecompressionError::UnsupportedVersion`] - Version byte not equal to 1
+/// - [`DecompressionError::InvalidBitWidth`] - Bit width byte > 32
+/// - [`DecompressionError::TruncatedData`] - Insufficient bytes for packed data
+/// - [`DecompressionError::BlockCountMismatch`] - Block count doesn't match length
+///
+/// # Panics
+///
+/// Does not panic. All errors are returned as [`DecompressionError`].
 ///
 /// # Example
 ///
 /// ```
 /// use simd_bp128::{compress, decompress};
 ///
-/// let data: Vec<u32> = (0..256).map(|i| i % 100).collect();
+/// let data: Vec<u32> = (0..256).map(|i| i % 1000).collect();
 /// let compressed = compress(&data).unwrap();
 /// let decompressed = decompress(&compressed).unwrap();
 /// assert_eq!(data, decompressed);
@@ -83,73 +92,36 @@ pub fn decompress(input: &[u8]) -> Result<Vec<u32>, DecompressionError> {
 
     let bit_widths = &input[HEADER_SIZE..HEADER_SIZE + num_blocks];
 
-    for &_bw in bit_widths.iter() {
-        if _bw > 32 {
-            return Err(DecompressionError::InvalidBitWidth { bit_width: _bw });
+    // Validate all bit widths up front in a single cheap pass — no size
+    // computation here, just reject obviously bad input before allocating.
+    for &bw in bit_widths {
+        if bw > 32 {
+            return Err(DecompressionError::InvalidBitWidth { bit_width: bw });
         }
     }
 
-    let mut min_packed_size: usize = 0;
-    let mut values_to_process: usize = total_count;
-    for &bit_width in bit_widths.iter() {
-        if values_to_process == 0 {
-            break;
-        }
-        let block_values = values_to_process.min(BLOCK_SIZE);
-
-        if bit_width > 32 {
-            return Err(DecompressionError::InvalidBitWidth { bit_width });
-        }
-
-        let block_size = if block_values == BLOCK_SIZE {
-            packed_block_size(bit_width)
-        } else {
-            packed_partial_block_size(block_values, bit_width)
-        };
-
-        min_packed_size =
-            min_packed_size
-                .checked_add(block_size)
-                .ok_or(DecompressionError::TruncatedData {
-                    position: HEADER_SIZE,
-                    needed: usize::MAX,
-                    have: input.len(),
-                })?;
-
-        values_to_process = values_to_process.saturating_sub(block_values);
-    }
-
-    let min_total_size = HEADER_SIZE + num_blocks + min_packed_size;
-    if input.len() < min_total_size {
-        return Err(DecompressionError::TruncatedData {
-            position: input.len(),
-            needed: min_total_size,
-            have: input.len(),
-        });
-    }
-
-    let mut output = Vec::with_capacity(total_count);
+    // Allocate the full output buffer once. All blocks unpack directly into
+    // their target slice — no intermediate [u32; 128] stack buffer, no
+    // extend_from_slice copy, and zero-width blocks need no work at all
+    // because the allocation is already zeroed.
+    let mut output = vec![0u32; total_count];
     let mut data_pos = HEADER_SIZE + num_blocks;
-    let mut values_remaining = total_count;
+    let num_full_blocks = total_count / BLOCK_SIZE;
+    let remaining = total_count % BLOCK_SIZE;
 
-    for &bit_width in bit_widths.iter() {
-        if values_remaining == 0 {
-            break;
+    // --- Hot path: full blocks of exactly BLOCK_SIZE values ---
+    // Splitting full and partial blocks into separate loops lets the compiler
+    // see a fixed 128-element stride, eliminating the .min(BLOCK_SIZE) branch
+    // on every iteration.
+    for (block_idx, &bit_width) in bit_widths.iter().enumerate().take(num_full_blocks) {
+        let write_pos = block_idx * BLOCK_SIZE;
+
+        if bit_width == 0 {
+            // Output is pre-zeroed; nothing to read from input.
+            continue;
         }
 
-        let block_values = values_remaining.min(BLOCK_SIZE);
-        let is_partial = block_values < BLOCK_SIZE;
-
-        let packed_size = if is_partial {
-            packed_partial_block_size(block_values, bit_width)
-        } else {
-            packed_block_size(bit_width)
-        };
-
-        if bit_width > 32 {
-            return Err(DecompressionError::InvalidBitWidth { bit_width });
-        }
-
+        let packed_size = packed_block_size(bit_width);
         let data_end =
             data_pos
                 .checked_add(packed_size)
@@ -167,74 +139,50 @@ pub fn decompress(input: &[u8]) -> Result<Vec<u32>, DecompressionError> {
             });
         }
 
-        if packed_size > 0 {
-            let packed_data = &input[data_pos..data_end];
+        let packed_data = &input[data_pos..data_end];
 
-            if is_partial {
-                let mut block = [0u32; BLOCK_SIZE];
-                ScalarBackend::unpack_partial_block(
-                    packed_data,
-                    bit_width,
-                    block_values,
-                    &mut block,
-                )
-                .map_err(|e| match e {
-                    crate::error::Error::InvalidBitWidth(bw) => {
-                        DecompressionError::InvalidBitWidth { bit_width: bw }
-                    }
-                    crate::error::Error::InputTooShort { need, got } => {
-                        DecompressionError::TruncatedData {
-                            position: data_pos,
-                            needed: need,
-                            have: got,
-                        }
-                    }
-                    crate::error::Error::OutputTooSmall { need, got } => {
-                        DecompressionError::TruncatedData {
-                            position: data_pos,
-                            needed: need,
-                            have: got,
-                        }
-                    }
-                    crate::error::Error::CompressionError(_) => DecompressionError::TruncatedData {
-                        position: data_pos,
-                        needed: packed_size,
-                        have: 0,
-                    },
-                    crate::error::Error::DecompressionError(inner) => inner,
-                })?;
-                output.extend_from_slice(&block[..block_values]);
-            } else {
-                let mut block = [0u32; BLOCK_SIZE];
-                unpack_block_dispatch(packed_data, bit_width, &mut block).map_err(|e| match e {
-                    crate::error::Error::InvalidBitWidth(bw) => {
-                        DecompressionError::InvalidBitWidth { bit_width: bw }
-                    }
-                    crate::error::Error::InputTooShort { need, got } => {
-                        DecompressionError::TruncatedData {
-                            position: data_pos,
-                            needed: need,
-                            have: got,
-                        }
-                    }
-                    crate::error::Error::OutputTooSmall { need, got } => {
-                        DecompressionError::TruncatedData {
-                            position: data_pos,
-                            needed: need,
-                            have: got,
-                        }
-                    }
-                    crate::error::Error::CompressionError(_) => DecompressionError::TruncatedData {
-                        position: data_pos,
-                        needed: packed_size,
-                        have: 0,
-                    },
-                    crate::error::Error::DecompressionError(inner) => inner,
-                })?;
-                output.extend_from_slice(&block);
+        // Unpack directly into the output slice — no stack buffer or memcpy.
+        let dest: &mut [u32; BLOCK_SIZE] = (&mut output[write_pos..write_pos + BLOCK_SIZE])
+            .try_into()
+            .expect("slice length equals BLOCK_SIZE");
+
+        unpack_block_dispatch(packed_data, bit_width, dest).map_err(|e| match e {
+            crate::error::Error::InvalidBitWidth(bw) => {
+                DecompressionError::InvalidBitWidth { bit_width: bw }
             }
+            crate::error::Error::InputTooShort { need, got } => DecompressionError::TruncatedData {
+                position: data_pos,
+                needed: need,
+                have: got,
+            },
+            crate::error::Error::OutputTooSmall { need, got } => {
+                DecompressionError::TruncatedData {
+                    position: data_pos,
+                    needed: need,
+                    have: got,
+                }
+            }
+            crate::error::Error::CompressionError(_) => DecompressionError::TruncatedData {
+                position: data_pos,
+                needed: packed_size,
+                have: 0,
+            },
+            crate::error::Error::DecompressionError(inner) => inner,
+        })?;
 
-            data_pos =
+        // Reuse data_end rather than checked_add a second time.
+        data_pos = data_end;
+    }
+
+    // --- Partial block (last block only, 1-127 values) ---
+    if remaining > 0 {
+        let block_idx = num_full_blocks;
+        let bit_width = bit_widths[block_idx];
+        let write_pos = num_full_blocks * BLOCK_SIZE;
+
+        if bit_width != 0 {
+            let packed_size = packed_partial_block_size(remaining, bit_width);
+            let data_end =
                 data_pos
                     .checked_add(packed_size)
                     .ok_or(DecompressionError::TruncatedData {
@@ -242,11 +190,50 @@ pub fn decompress(input: &[u8]) -> Result<Vec<u32>, DecompressionError> {
                         needed: packed_size,
                         have: 0,
                     })?;
-        } else {
-            output.extend(std::iter::repeat(0u32).take(block_values));
-        }
 
-        values_remaining -= block_values;
+            if data_end > input.len() {
+                return Err(DecompressionError::TruncatedData {
+                    position: data_pos,
+                    needed: packed_size,
+                    have: input.len() - data_pos,
+                });
+            }
+
+            let packed_data = &input[data_pos..data_end];
+
+            ScalarBackend::unpack_partial_block(
+                packed_data,
+                bit_width,
+                remaining,
+                &mut output[write_pos..write_pos + remaining],
+            )
+            .map_err(|e| match e {
+                crate::error::Error::InvalidBitWidth(bw) => {
+                    DecompressionError::InvalidBitWidth { bit_width: bw }
+                }
+                crate::error::Error::InputTooShort { need, got } => {
+                    DecompressionError::TruncatedData {
+                        position: data_pos,
+                        needed: need,
+                        have: got,
+                    }
+                }
+                crate::error::Error::OutputTooSmall { need, got } => {
+                    DecompressionError::TruncatedData {
+                        position: data_pos,
+                        needed: need,
+                        have: got,
+                    }
+                }
+                crate::error::Error::CompressionError(_) => DecompressionError::TruncatedData {
+                    position: data_pos,
+                    needed: packed_size,
+                    have: 0,
+                },
+                crate::error::Error::DecompressionError(inner) => inner,
+            })?;
+        }
+        // bit_width == 0: output already zeroed, nothing to do.
     }
 
     if output.len() != total_count {

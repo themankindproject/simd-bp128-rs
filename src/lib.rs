@@ -15,3 +15,4 @@ pub(crate) mod error;
 pub(crate) mod simd;
 
 pub(crate) const BLOCK_SIZE: usize = 128;
+pub(crate) const FORMAT_VERSION: u8 = 1;
