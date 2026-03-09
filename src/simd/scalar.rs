@@ -1,3 +1,5 @@
+#![allow(clippy::needless_range_loop)]
+
 use crate::error::Error;
 use crate::simd::SimdBackend;
 
@@ -95,31 +97,108 @@ fn pack_n(input: &[u32], bit_width: u8, output: &mut [u8]) -> Result<(), Error> 
     }
 
     match bits_per_value {
-        4 => return pack_4bit(input, output),
-        5 => return pack_5bit(input, output),
-        6 => return pack_6bit(input, output),
-        7 => return pack_7bit(input, output),
-        8 => return pack_8bit(input, output),
-        12 => return pack_12bit(input, output),
-        16 => return pack_16bit(input, output),
-        24 => return pack_24bit(input, output),
-        32 => return pack_32bit(input, output),
-        _ => {}
+        1 => pack_1bit(input, output),
+        2 => pack_2bit(input, output),
+        3 => pack_3bit(input, output),
+        4 => pack_4bit(input, output),
+        5 => pack_5bit(input, output),
+        6 => pack_6bit(input, output),
+        7 => pack_7bit(input, output),
+        8 => pack_8bit(input, output),
+        9 => pack_9bit(input, output),
+        10 => pack_10bit(input, output),
+        11 => pack_11bit(input, output),
+        12 => pack_12bit(input, output),
+        13 => pack_13bit(input, output),
+        14 => pack_14bit(input, output),
+        15 => pack_15bit(input, output),
+        16 => pack_16bit(input, output),
+        17 => pack_17bit(input, output),
+        18 => pack_18bit(input, output),
+        19 => pack_19bit(input, output),
+        20 => pack_20bit(input, output),
+        21 => pack_21bit(input, output),
+        22 => pack_22bit(input, output),
+        23 => pack_23bit(input, output),
+        24 => pack_24bit(input, output),
+        25 => pack_25bit(input, output),
+        26 => pack_26bit(input, output),
+        27 => pack_27bit(input, output),
+        28 => pack_28bit(input, output),
+        29 => pack_29bit(input, output),
+        30 => pack_30bit(input, output),
+        31 => pack_31bit(input, output),
+        32 => pack_32bit(input, output),
+        _ => unreachable!(),
     }
+}
 
-    let value_mask: u64 = if bits_per_value >= 32 {
-        u32::MAX as u64
-    } else {
-        (1u64 << bits_per_value) - 1
-    };
+#[inline]
+fn pack_1bit(input: &[u32], output: &mut [u8]) -> Result<(), Error> {
+    let num_values = input.len();
+    let num_bytes = (num_values + 7) / 8;
+    for byte_idx in 0..num_bytes {
+        let base = byte_idx * 8;
+        let mut byte = 0u8;
+        byte |= (input[base] & 1) as u8;
+        if base + 1 < num_values {
+            byte |= ((input[base + 1] & 1) as u8) << 1;
+        }
+        if base + 2 < num_values {
+            byte |= ((input[base + 2] & 1) as u8) << 2;
+        }
+        if base + 3 < num_values {
+            byte |= ((input[base + 3] & 1) as u8) << 3;
+        }
+        if base + 4 < num_values {
+            byte |= ((input[base + 4] & 1) as u8) << 4;
+        }
+        if base + 5 < num_values {
+            byte |= ((input[base + 5] & 1) as u8) << 5;
+        }
+        if base + 6 < num_values {
+            byte |= ((input[base + 6] & 1) as u8) << 6;
+        }
+        if base + 7 < num_values {
+            byte |= ((input[base + 7] & 1) as u8) << 7;
+        }
+        output[byte_idx] = byte;
+    }
+    Ok(())
+}
 
+#[inline]
+fn pack_2bit(input: &[u32], output: &mut [u8]) -> Result<(), Error> {
+    let num_values = input.len();
+    let num_bytes = (num_values * 2 + 7) / 8;
+    for byte_idx in 0..num_bytes {
+        let base = byte_idx * 4;
+        let mut byte = 0u8;
+        byte |= (input[base] & 3) as u8;
+        if base + 1 < num_values {
+            byte |= ((input[base + 1] & 3) as u8) << 2;
+        }
+        if base + 2 < num_values {
+            byte |= ((input[base + 2] & 3) as u8) << 4;
+        }
+        if base + 3 < num_values {
+            byte |= ((input[base + 3] & 3) as u8) << 6;
+        }
+        output[byte_idx] = byte;
+    }
+    Ok(())
+}
+
+#[inline]
+fn pack_3bit(input: &[u32], output: &mut [u8]) -> Result<(), Error> {
+    let num_values = input.len();
     let mut acc: u64 = 0;
     let mut acc_bits: usize = 0;
     let mut out_idx: usize = 0;
 
-    for &value in input {
-        acc |= (value as u64 & value_mask) << acc_bits;
-        acc_bits += bits_per_value;
+    for i in 0..num_values {
+        acc |= ((input[i] & 7) as u64) << acc_bits;
+        acc_bits += 3;
 
         while acc_bits >= 8 {
             output[out_idx] = acc as u8;
@@ -131,37 +210,6 @@ fn pack_n(input: &[u32], bit_width: u8, output: &mut [u8]) -> Result<(), Error> 
 
     if acc_bits > 0 {
         output[out_idx] = acc as u8;
-    }
-
-    Ok(())
-}
-
-#[inline]
-fn pack_8bit(input: &[u32], output: &mut [u8]) -> Result<(), Error> {
-    for (i, &value) in input.iter().enumerate() {
-        output[i] = value as u8;
-    }
-    Ok(())
-}
-
-#[inline]
-fn pack_16bit(input: &[u32], output: &mut [u8]) -> Result<(), Error> {
-    for (i, &value) in input.iter().enumerate() {
-        let bytes = value.to_le_bytes();
-        output[i * 2] = bytes[0];
-        output[i * 2 + 1] = bytes[1];
-    }
-    Ok(())
-}
-
-#[inline]
-fn pack_32bit(input: &[u32], output: &mut [u8]) -> Result<(), Error> {
-    for (i, &value) in input.iter().enumerate() {
-        let bytes = value.to_le_bytes();
-        output[i * 4] = bytes[0];
-        output[i * 4 + 1] = bytes[1];
-        output[i * 4 + 2] = bytes[2];
-        output[i * 4 + 3] = bytes[3];
     }
     Ok(())
 }
@@ -257,6 +305,36 @@ fn pack_7bit(input: &[u32], output: &mut [u8]) -> Result<(), Error> {
 }
 
 #[inline]
+fn pack_8bit(input: &[u32], output: &mut [u8]) -> Result<(), Error> {
+    for (i, &value) in input.iter().enumerate() {
+        output[i] = value as u8;
+    }
+    Ok(())
+}
+
+#[inline]
+fn pack_16bit(input: &[u32], output: &mut [u8]) -> Result<(), Error> {
+    for (i, &value) in input.iter().enumerate() {
+        let bytes = value.to_le_bytes();
+        output[i * 2] = bytes[0];
+        output[i * 2 + 1] = bytes[1];
+    }
+    Ok(())
+}
+
+#[inline]
+fn pack_32bit(input: &[u32], output: &mut [u8]) -> Result<(), Error> {
+    for (i, &value) in input.iter().enumerate() {
+        let bytes = value.to_le_bytes();
+        output[i * 4] = bytes[0];
+        output[i * 4 + 1] = bytes[1];
+        output[i * 4 + 2] = bytes[2];
+        output[i * 4 + 3] = bytes[3];
+    }
+    Ok(())
+}
+
+#[inline]
 fn pack_12bit(input: &[u32], output: &mut [u8]) -> Result<(), Error> {
     let num_values = input.len();
     let mut acc: u64 = 0;
@@ -287,6 +365,506 @@ fn pack_24bit(input: &[u32], output: &mut [u8]) -> Result<(), Error> {
         output[i * 3] = value as u8;
         output[i * 3 + 1] = (value >> 8) as u8;
         output[i * 3 + 2] = (value >> 16) as u8;
+    }
+    Ok(())
+}
+
+#[inline]
+fn pack_9bit(input: &[u32], output: &mut [u8]) -> Result<(), Error> {
+    let num_values = input.len();
+    let mut acc: u64 = 0;
+    let mut acc_bits: usize = 0;
+    let mut out_idx: usize = 0;
+
+    for i in 0..num_values {
+        acc |= ((input[i] & 0x1FF) as u64) << acc_bits;
+        acc_bits += 9;
+
+        while acc_bits >= 8 {
+            output[out_idx] = acc as u8;
+            out_idx += 1;
+            acc >>= 8;
+            acc_bits -= 8;
+        }
+    }
+
+    if acc_bits > 0 {
+        output[out_idx] = acc as u8;
+    }
+    Ok(())
+}
+
+#[inline]
+fn pack_10bit(input: &[u32], output: &mut [u8]) -> Result<(), Error> {
+    let num_values = input.len();
+    let mut acc: u64 = 0;
+    let mut acc_bits: usize = 0;
+    let mut out_idx: usize = 0;
+
+    for i in 0..num_values {
+        acc |= ((input[i] & 0x3FF) as u64) << acc_bits;
+        acc_bits += 10;
+
+        while acc_bits >= 8 {
+            output[out_idx] = acc as u8;
+            out_idx += 1;
+            acc >>= 8;
+            acc_bits -= 8;
+        }
+    }
+
+    if acc_bits > 0 {
+        output[out_idx] = acc as u8;
+    }
+    Ok(())
+}
+
+#[inline]
+fn pack_11bit(input: &[u32], output: &mut [u8]) -> Result<(), Error> {
+    let num_values = input.len();
+    let mut acc: u64 = 0;
+    let mut acc_bits: usize = 0;
+    let mut out_idx: usize = 0;
+
+    for i in 0..num_values {
+        acc |= ((input[i] & 0x7FF) as u64) << acc_bits;
+        acc_bits += 11;
+
+        while acc_bits >= 8 {
+            output[out_idx] = acc as u8;
+            out_idx += 1;
+            acc >>= 8;
+            acc_bits -= 8;
+        }
+    }
+
+    if acc_bits > 0 {
+        output[out_idx] = acc as u8;
+    }
+    Ok(())
+}
+
+#[inline]
+fn pack_13bit(input: &[u32], output: &mut [u8]) -> Result<(), Error> {
+    let num_values = input.len();
+    let mut acc: u64 = 0;
+    let mut acc_bits: usize = 0;
+    let mut out_idx: usize = 0;
+
+    for i in 0..num_values {
+        acc |= ((input[i] & 0x1FFF) as u64) << acc_bits;
+        acc_bits += 13;
+
+        while acc_bits >= 8 {
+            output[out_idx] = acc as u8;
+            out_idx += 1;
+            acc >>= 8;
+            acc_bits -= 8;
+        }
+    }
+
+    if acc_bits > 0 {
+        output[out_idx] = acc as u8;
+    }
+    Ok(())
+}
+
+#[inline]
+fn pack_14bit(input: &[u32], output: &mut [u8]) -> Result<(), Error> {
+    let num_values = input.len();
+    let mut acc: u64 = 0;
+    let mut acc_bits: usize = 0;
+    let mut out_idx: usize = 0;
+
+    for i in 0..num_values {
+        acc |= ((input[i] & 0x3FFF) as u64) << acc_bits;
+        acc_bits += 14;
+
+        while acc_bits >= 8 {
+            output[out_idx] = acc as u8;
+            out_idx += 1;
+            acc >>= 8;
+            acc_bits -= 8;
+        }
+    }
+
+    if acc_bits > 0 {
+        output[out_idx] = acc as u8;
+    }
+    Ok(())
+}
+
+#[inline]
+fn pack_15bit(input: &[u32], output: &mut [u8]) -> Result<(), Error> {
+    let num_values = input.len();
+    let mut acc: u64 = 0;
+    let mut acc_bits: usize = 0;
+    let mut out_idx: usize = 0;
+
+    for i in 0..num_values {
+        acc |= ((input[i] & 0x7FFF) as u64) << acc_bits;
+        acc_bits += 15;
+
+        while acc_bits >= 8 {
+            output[out_idx] = acc as u8;
+            out_idx += 1;
+            acc >>= 8;
+            acc_bits -= 8;
+        }
+    }
+
+    if acc_bits > 0 {
+        output[out_idx] = acc as u8;
+    }
+    Ok(())
+}
+
+#[inline]
+fn pack_17bit(input: &[u32], output: &mut [u8]) -> Result<(), Error> {
+    let num_values = input.len();
+    let mut acc: u64 = 0;
+    let mut acc_bits: usize = 0;
+    let mut out_idx: usize = 0;
+
+    for i in 0..num_values {
+        acc |= ((input[i] & 0x1FFFF) as u64) << acc_bits;
+        acc_bits += 17;
+
+        while acc_bits >= 8 {
+            output[out_idx] = acc as u8;
+            out_idx += 1;
+            acc >>= 8;
+            acc_bits -= 8;
+        }
+    }
+
+    if acc_bits > 0 {
+        output[out_idx] = acc as u8;
+    }
+    Ok(())
+}
+
+#[inline]
+fn pack_18bit(input: &[u32], output: &mut [u8]) -> Result<(), Error> {
+    let num_values = input.len();
+    let mut acc: u64 = 0;
+    let mut acc_bits: usize = 0;
+    let mut out_idx: usize = 0;
+
+    for i in 0..num_values {
+        acc |= ((input[i] & 0x3FFFF) as u64) << acc_bits;
+        acc_bits += 18;
+
+        while acc_bits >= 8 {
+            output[out_idx] = acc as u8;
+            out_idx += 1;
+            acc >>= 8;
+            acc_bits -= 8;
+        }
+    }
+
+    if acc_bits > 0 {
+        output[out_idx] = acc as u8;
+    }
+    Ok(())
+}
+
+#[inline]
+fn pack_19bit(input: &[u32], output: &mut [u8]) -> Result<(), Error> {
+    let num_values = input.len();
+    let mut acc: u64 = 0;
+    let mut acc_bits: usize = 0;
+    let mut out_idx: usize = 0;
+
+    for i in 0..num_values {
+        acc |= ((input[i] & 0x7FFFF) as u64) << acc_bits;
+        acc_bits += 19;
+
+        while acc_bits >= 8 {
+            output[out_idx] = acc as u8;
+            out_idx += 1;
+            acc >>= 8;
+            acc_bits -= 8;
+        }
+    }
+
+    if acc_bits > 0 {
+        output[out_idx] = acc as u8;
+    }
+    Ok(())
+}
+
+#[inline]
+fn pack_20bit(input: &[u32], output: &mut [u8]) -> Result<(), Error> {
+    let num_values = input.len();
+    let mut acc: u64 = 0;
+    let mut acc_bits: usize = 0;
+    let mut out_idx: usize = 0;
+
+    for i in 0..num_values {
+        acc |= ((input[i] & 0xFFFFF) as u64) << acc_bits;
+        acc_bits += 20;
+
+        while acc_bits >= 8 {
+            output[out_idx] = acc as u8;
+            out_idx += 1;
+            acc >>= 8;
+            acc_bits -= 8;
+        }
+    }
+
+    if acc_bits > 0 {
+        output[out_idx] = acc as u8;
+    }
+    Ok(())
+}
+
+#[inline]
+fn pack_21bit(input: &[u32], output: &mut [u8]) -> Result<(), Error> {
+    let num_values = input.len();
+    let mut acc: u64 = 0;
+    let mut acc_bits: usize = 0;
+    let mut out_idx: usize = 0;
+
+    for i in 0..num_values {
+        acc |= ((input[i] & 0x1FFFFF) as u64) << acc_bits;
+        acc_bits += 21;
+
+        while acc_bits >= 8 {
+            output[out_idx] = acc as u8;
+            out_idx += 1;
+            acc >>= 8;
+            acc_bits -= 8;
+        }
+    }
+
+    if acc_bits > 0 {
+        output[out_idx] = acc as u8;
+    }
+    Ok(())
+}
+
+#[inline]
+fn pack_22bit(input: &[u32], output: &mut [u8]) -> Result<(), Error> {
+    let num_values = input.len();
+    let mut acc: u64 = 0;
+    let mut acc_bits: usize = 0;
+    let mut out_idx: usize = 0;
+
+    for i in 0..num_values {
+        acc |= ((input[i] & 0x3FFFFF) as u64) << acc_bits;
+        acc_bits += 22;
+
+        while acc_bits >= 8 {
+            output[out_idx] = acc as u8;
+            out_idx += 1;
+            acc >>= 8;
+            acc_bits -= 8;
+        }
+    }
+
+    if acc_bits > 0 {
+        output[out_idx] = acc as u8;
+    }
+    Ok(())
+}
+
+#[inline]
+fn pack_23bit(input: &[u32], output: &mut [u8]) -> Result<(), Error> {
+    let num_values = input.len();
+    let mut acc: u64 = 0;
+    let mut acc_bits: usize = 0;
+    let mut out_idx: usize = 0;
+
+    for i in 0..num_values {
+        acc |= ((input[i] & 0x7FFFFF) as u64) << acc_bits;
+        acc_bits += 23;
+
+        while acc_bits >= 8 {
+            output[out_idx] = acc as u8;
+            out_idx += 1;
+            acc >>= 8;
+            acc_bits -= 8;
+        }
+    }
+
+    if acc_bits > 0 {
+        output[out_idx] = acc as u8;
+    }
+    Ok(())
+}
+
+#[inline]
+fn pack_25bit(input: &[u32], output: &mut [u8]) -> Result<(), Error> {
+    let num_values = input.len();
+    let mut acc: u64 = 0;
+    let mut acc_bits: usize = 0;
+    let mut out_idx: usize = 0;
+
+    for i in 0..num_values {
+        acc |= ((input[i] & 0x1FFFFFF) as u64) << acc_bits;
+        acc_bits += 25;
+
+        while acc_bits >= 8 {
+            output[out_idx] = acc as u8;
+            out_idx += 1;
+            acc >>= 8;
+            acc_bits -= 8;
+        }
+    }
+
+    if acc_bits > 0 {
+        output[out_idx] = acc as u8;
+    }
+    Ok(())
+}
+
+#[inline]
+fn pack_26bit(input: &[u32], output: &mut [u8]) -> Result<(), Error> {
+    let num_values = input.len();
+    let mut acc: u64 = 0;
+    let mut acc_bits: usize = 0;
+    let mut out_idx: usize = 0;
+
+    for i in 0..num_values {
+        acc |= ((input[i] & 0x3FFFFFF) as u64) << acc_bits;
+        acc_bits += 26;
+
+        while acc_bits >= 8 {
+            output[out_idx] = acc as u8;
+            out_idx += 1;
+            acc >>= 8;
+            acc_bits -= 8;
+        }
+    }
+
+    if acc_bits > 0 {
+        output[out_idx] = acc as u8;
+    }
+    Ok(())
+}
+
+#[inline]
+fn pack_27bit(input: &[u32], output: &mut [u8]) -> Result<(), Error> {
+    let num_values = input.len();
+    let mut acc: u64 = 0;
+    let mut acc_bits: usize = 0;
+    let mut out_idx: usize = 0;
+
+    for i in 0..num_values {
+        acc |= ((input[i] & 0x7FFFFFF) as u64) << acc_bits;
+        acc_bits += 27;
+
+        while acc_bits >= 8 {
+            output[out_idx] = acc as u8;
+            out_idx += 1;
+            acc >>= 8;
+            acc_bits -= 8;
+        }
+    }
+
+    if acc_bits > 0 {
+        output[out_idx] = acc as u8;
+    }
+    Ok(())
+}
+
+#[inline]
+fn pack_28bit(input: &[u32], output: &mut [u8]) -> Result<(), Error> {
+    let num_values = input.len();
+    let mut acc: u64 = 0;
+    let mut acc_bits: usize = 0;
+    let mut out_idx: usize = 0;
+
+    for i in 0..num_values {
+        acc |= ((input[i] & 0xFFFFFFF) as u64) << acc_bits;
+        acc_bits += 28;
+
+        while acc_bits >= 8 {
+            output[out_idx] = acc as u8;
+            out_idx += 1;
+            acc >>= 8;
+            acc_bits -= 8;
+        }
+    }
+
+    if acc_bits > 0 {
+        output[out_idx] = acc as u8;
+    }
+    Ok(())
+}
+
+#[inline]
+fn pack_29bit(input: &[u32], output: &mut [u8]) -> Result<(), Error> {
+    let num_values = input.len();
+    let mut acc: u64 = 0;
+    let mut acc_bits: usize = 0;
+    let mut out_idx: usize = 0;
+
+    for i in 0..num_values {
+        acc |= ((input[i] & 0x1FFFFFFF) as u64) << acc_bits;
+        acc_bits += 29;
+
+        while acc_bits >= 8 {
+            output[out_idx] = acc as u8;
+            out_idx += 1;
+            acc >>= 8;
+            acc_bits -= 8;
+        }
+    }
+
+    if acc_bits > 0 {
+        output[out_idx] = acc as u8;
+    }
+    Ok(())
+}
+
+#[inline]
+fn pack_30bit(input: &[u32], output: &mut [u8]) -> Result<(), Error> {
+    let num_values = input.len();
+    let mut acc: u64 = 0;
+    let mut acc_bits: usize = 0;
+    let mut out_idx: usize = 0;
+
+    for i in 0..num_values {
+        acc |= ((input[i] & 0x3FFFFFFF) as u64) << acc_bits;
+        acc_bits += 30;
+
+        while acc_bits >= 8 {
+            output[out_idx] = acc as u8;
+            out_idx += 1;
+            acc >>= 8;
+            acc_bits -= 8;
+        }
+    }
+
+    if acc_bits > 0 {
+        output[out_idx] = acc as u8;
+    }
+    Ok(())
+}
+
+#[inline]
+fn pack_31bit(input: &[u32], output: &mut [u8]) -> Result<(), Error> {
+    let num_values = input.len();
+    let mut acc: u64 = 0;
+    let mut acc_bits: usize = 0;
+    let mut out_idx: usize = 0;
+
+    for i in 0..num_values {
+        acc |= ((input[i] & 0x7FFFFFFF) as u64) << acc_bits;
+        acc_bits += 31;
+
+        while acc_bits >= 8 {
+            output[out_idx] = acc as u8;
+            out_idx += 1;
+            acc >>= 8;
+            acc_bits -= 8;
+        }
+    }
+
+    if acc_bits > 0 {
+        output[out_idx] = acc as u8;
     }
     Ok(())
 }
@@ -324,41 +902,40 @@ fn unpack_n(
     }
 
     match bits_per_value {
-        4 => return unpack_4bit(input, num_values, output),
-        5 => return unpack_5bit(input, num_values, output),
-        6 => return unpack_6bit(input, num_values, output),
-        7 => return unpack_7bit(input, num_values, output),
-        8 => return unpack_8bit(input, num_values, output),
-        12 => return unpack_12bit(input, num_values, output),
-        16 => return unpack_16bit(input, num_values, output),
-        24 => return unpack_24bit(input, num_values, output),
-        32 => return unpack_32bit(input, num_values, output),
-        _ => {}
+        1 => unpack_1bit(input, num_values, output),
+        2 => unpack_2bit(input, num_values, output),
+        3 => unpack_3bit(input, num_values, output),
+        4 => unpack_4bit(input, num_values, output),
+        5 => unpack_5bit(input, num_values, output),
+        6 => unpack_6bit(input, num_values, output),
+        7 => unpack_7bit(input, num_values, output),
+        8 => unpack_8bit(input, num_values, output),
+        9 => unpack_9bit(input, num_values, output),
+        10 => unpack_10bit(input, num_values, output),
+        11 => unpack_11bit(input, num_values, output),
+        12 => unpack_12bit(input, num_values, output),
+        13 => unpack_13bit(input, num_values, output),
+        14 => unpack_14bit(input, num_values, output),
+        15 => unpack_15bit(input, num_values, output),
+        16 => unpack_16bit(input, num_values, output),
+        17 => unpack_17bit(input, num_values, output),
+        18 => unpack_18bit(input, num_values, output),
+        19 => unpack_19bit(input, num_values, output),
+        20 => unpack_20bit(input, num_values, output),
+        21 => unpack_21bit(input, num_values, output),
+        22 => unpack_22bit(input, num_values, output),
+        23 => unpack_23bit(input, num_values, output),
+        24 => unpack_24bit(input, num_values, output),
+        25 => unpack_25bit(input, num_values, output),
+        26 => unpack_26bit(input, num_values, output),
+        27 => unpack_27bit(input, num_values, output),
+        28 => unpack_28bit(input, num_values, output),
+        29 => unpack_29bit(input, num_values, output),
+        30 => unpack_30bit(input, num_values, output),
+        31 => unpack_31bit(input, num_values, output),
+        32 => unpack_32bit(input, num_values, output),
+        _ => unreachable!(),
     }
-
-    let value_mask: u64 = if bits_per_value >= 32 {
-        u32::MAX as u64
-    } else {
-        (1u64 << bits_per_value) - 1
-    };
-
-    let mut acc: u64 = 0;
-    let mut acc_bits: usize = 0;
-    let mut in_idx: usize = 0;
-
-    for out in output.iter_mut().take(num_values) {
-        while acc_bits < bits_per_value {
-            acc |= (input[in_idx] as u64) << acc_bits;
-            acc_bits += 8;
-            in_idx += 1;
-        }
-
-        *out = (acc & value_mask) as u32;
-        acc >>= bits_per_value;
-        acc_bits -= bits_per_value;
-    }
-
-    Ok(())
 }
 
 #[inline]
@@ -387,6 +964,39 @@ fn unpack_32bit(input: &[u8], num_values: usize, output: &mut [u32]) -> Result<(
         let mid2 = input[i * 4 + 2] as u32;
         let hi = input[i * 4 + 3] as u32;
         *out = lo | (mid1 << 8) | (mid2 << 16) | (hi << 24);
+    }
+    Ok(())
+}
+
+#[inline]
+fn unpack_1bit(input: &[u8], num_values: usize, output: &mut [u32]) -> Result<(), Error> {
+    for i in 0..num_values {
+        output[i] = ((input[i >> 3] >> (i & 7)) & 1) as u32;
+    }
+    Ok(())
+}
+
+#[inline]
+fn unpack_2bit(input: &[u8], num_values: usize, output: &mut [u32]) -> Result<(), Error> {
+    for i in 0..num_values {
+        let byte_idx = i >> 2;
+        let shift = (i & 3) << 1;
+        output[i] = ((input[byte_idx] >> shift) & 3) as u32;
+    }
+    Ok(())
+}
+
+#[inline]
+fn unpack_3bit(input: &[u8], num_values: usize, output: &mut [u32]) -> Result<(), Error> {
+    for i in 0..num_values {
+        let byte_idx = (i * 3) >> 3;
+        let bit_offset = (i * 3) & 7;
+        let value = if bit_offset <= 5 {
+            (input[byte_idx] >> bit_offset) & 7
+        } else {
+            ((input[byte_idx] >> bit_offset) | (input[byte_idx + 1] << (8 - bit_offset))) & 7
+        };
+        output[i] = value as u32;
     }
     Ok(())
 }
@@ -491,6 +1101,406 @@ fn unpack_24bit(input: &[u8], num_values: usize, output: &mut [u32]) -> Result<(
         let mid = input[i * 3 + 1] as u32;
         let hi = input[i * 3 + 2] as u32;
         *out = lo | (mid << 8) | (hi << 16);
+    }
+    Ok(())
+}
+
+#[inline]
+fn unpack_9bit(input: &[u8], num_values: usize, output: &mut [u32]) -> Result<(), Error> {
+    let mut acc: u64 = 0;
+    let mut acc_bits: usize = 0;
+    let mut in_idx: usize = 0;
+
+    for out in output.iter_mut().take(num_values) {
+        while acc_bits < 9 {
+            acc |= (input[in_idx] as u64) << acc_bits;
+            acc_bits += 8;
+            in_idx += 1;
+        }
+
+        *out = (acc & 0x1FF) as u32;
+        acc >>= 9;
+        acc_bits -= 9;
+    }
+    Ok(())
+}
+
+#[inline]
+fn unpack_10bit(input: &[u8], num_values: usize, output: &mut [u32]) -> Result<(), Error> {
+    let mut acc: u64 = 0;
+    let mut acc_bits: usize = 0;
+    let mut in_idx: usize = 0;
+
+    for out in output.iter_mut().take(num_values) {
+        while acc_bits < 10 {
+            acc |= (input[in_idx] as u64) << acc_bits;
+            acc_bits += 8;
+            in_idx += 1;
+        }
+
+        *out = (acc & 0x3FF) as u32;
+        acc >>= 10;
+        acc_bits -= 10;
+    }
+    Ok(())
+}
+
+#[inline]
+fn unpack_11bit(input: &[u8], num_values: usize, output: &mut [u32]) -> Result<(), Error> {
+    let mut acc: u64 = 0;
+    let mut acc_bits: usize = 0;
+    let mut in_idx: usize = 0;
+
+    for out in output.iter_mut().take(num_values) {
+        while acc_bits < 11 {
+            acc |= (input[in_idx] as u64) << acc_bits;
+            acc_bits += 8;
+            in_idx += 1;
+        }
+
+        *out = (acc & 0x7FF) as u32;
+        acc >>= 11;
+        acc_bits -= 11;
+    }
+    Ok(())
+}
+
+#[inline]
+fn unpack_13bit(input: &[u8], num_values: usize, output: &mut [u32]) -> Result<(), Error> {
+    let mut acc: u64 = 0;
+    let mut acc_bits: usize = 0;
+    let mut in_idx: usize = 0;
+
+    for out in output.iter_mut().take(num_values) {
+        while acc_bits < 13 {
+            acc |= (input[in_idx] as u64) << acc_bits;
+            acc_bits += 8;
+            in_idx += 1;
+        }
+
+        *out = (acc & 0x1FFF) as u32;
+        acc >>= 13;
+        acc_bits -= 13;
+    }
+    Ok(())
+}
+
+#[inline]
+fn unpack_14bit(input: &[u8], num_values: usize, output: &mut [u32]) -> Result<(), Error> {
+    let mut acc: u64 = 0;
+    let mut acc_bits: usize = 0;
+    let mut in_idx: usize = 0;
+
+    for out in output.iter_mut().take(num_values) {
+        while acc_bits < 14 {
+            acc |= (input[in_idx] as u64) << acc_bits;
+            acc_bits += 8;
+            in_idx += 1;
+        }
+
+        *out = (acc & 0x3FFF) as u32;
+        acc >>= 14;
+        acc_bits -= 14;
+    }
+    Ok(())
+}
+
+#[inline]
+fn unpack_15bit(input: &[u8], num_values: usize, output: &mut [u32]) -> Result<(), Error> {
+    let mut acc: u64 = 0;
+    let mut acc_bits: usize = 0;
+    let mut in_idx: usize = 0;
+
+    for out in output.iter_mut().take(num_values) {
+        while acc_bits < 15 {
+            acc |= (input[in_idx] as u64) << acc_bits;
+            acc_bits += 8;
+            in_idx += 1;
+        }
+
+        *out = (acc & 0x7FFF) as u32;
+        acc >>= 15;
+        acc_bits -= 15;
+    }
+    Ok(())
+}
+
+#[inline]
+fn unpack_17bit(input: &[u8], num_values: usize, output: &mut [u32]) -> Result<(), Error> {
+    let mut acc: u64 = 0;
+    let mut acc_bits: usize = 0;
+    let mut in_idx: usize = 0;
+
+    for out in output.iter_mut().take(num_values) {
+        while acc_bits < 17 {
+            acc |= (input[in_idx] as u64) << acc_bits;
+            acc_bits += 8;
+            in_idx += 1;
+        }
+
+        *out = (acc & 0x1FFFF) as u32;
+        acc >>= 17;
+        acc_bits -= 17;
+    }
+    Ok(())
+}
+
+#[inline]
+fn unpack_18bit(input: &[u8], num_values: usize, output: &mut [u32]) -> Result<(), Error> {
+    let mut acc: u64 = 0;
+    let mut acc_bits: usize = 0;
+    let mut in_idx: usize = 0;
+
+    for out in output.iter_mut().take(num_values) {
+        while acc_bits < 18 {
+            acc |= (input[in_idx] as u64) << acc_bits;
+            acc_bits += 8;
+            in_idx += 1;
+        }
+
+        *out = (acc & 0x3FFFF) as u32;
+        acc >>= 18;
+        acc_bits -= 18;
+    }
+    Ok(())
+}
+
+#[inline]
+fn unpack_19bit(input: &[u8], num_values: usize, output: &mut [u32]) -> Result<(), Error> {
+    let mut acc: u64 = 0;
+    let mut acc_bits: usize = 0;
+    let mut in_idx: usize = 0;
+
+    for out in output.iter_mut().take(num_values) {
+        while acc_bits < 19 {
+            acc |= (input[in_idx] as u64) << acc_bits;
+            acc_bits += 8;
+            in_idx += 1;
+        }
+
+        *out = (acc & 0x7FFFF) as u32;
+        acc >>= 19;
+        acc_bits -= 19;
+    }
+    Ok(())
+}
+
+#[inline]
+fn unpack_20bit(input: &[u8], num_values: usize, output: &mut [u32]) -> Result<(), Error> {
+    let mut acc: u64 = 0;
+    let mut acc_bits: usize = 0;
+    let mut in_idx: usize = 0;
+
+    for out in output.iter_mut().take(num_values) {
+        while acc_bits < 20 {
+            acc |= (input[in_idx] as u64) << acc_bits;
+            acc_bits += 8;
+            in_idx += 1;
+        }
+
+        *out = (acc & 0xFFFFF) as u32;
+        acc >>= 20;
+        acc_bits -= 20;
+    }
+    Ok(())
+}
+
+#[inline]
+fn unpack_21bit(input: &[u8], num_values: usize, output: &mut [u32]) -> Result<(), Error> {
+    let mut acc: u64 = 0;
+    let mut acc_bits: usize = 0;
+    let mut in_idx: usize = 0;
+
+    for out in output.iter_mut().take(num_values) {
+        while acc_bits < 21 {
+            acc |= (input[in_idx] as u64) << acc_bits;
+            acc_bits += 8;
+            in_idx += 1;
+        }
+
+        *out = (acc & 0x1FFFFF) as u32;
+        acc >>= 21;
+        acc_bits -= 21;
+    }
+    Ok(())
+}
+
+#[inline]
+fn unpack_22bit(input: &[u8], num_values: usize, output: &mut [u32]) -> Result<(), Error> {
+    let mut acc: u64 = 0;
+    let mut acc_bits: usize = 0;
+    let mut in_idx: usize = 0;
+
+    for out in output.iter_mut().take(num_values) {
+        while acc_bits < 22 {
+            acc |= (input[in_idx] as u64) << acc_bits;
+            acc_bits += 8;
+            in_idx += 1;
+        }
+
+        *out = (acc & 0x3FFFFF) as u32;
+        acc >>= 22;
+        acc_bits -= 22;
+    }
+    Ok(())
+}
+
+#[inline]
+fn unpack_23bit(input: &[u8], num_values: usize, output: &mut [u32]) -> Result<(), Error> {
+    let mut acc: u64 = 0;
+    let mut acc_bits: usize = 0;
+    let mut in_idx: usize = 0;
+
+    for out in output.iter_mut().take(num_values) {
+        while acc_bits < 23 {
+            acc |= (input[in_idx] as u64) << acc_bits;
+            acc_bits += 8;
+            in_idx += 1;
+        }
+
+        *out = (acc & 0x7FFFFF) as u32;
+        acc >>= 23;
+        acc_bits -= 23;
+    }
+    Ok(())
+}
+
+#[inline]
+fn unpack_25bit(input: &[u8], num_values: usize, output: &mut [u32]) -> Result<(), Error> {
+    let mut acc: u64 = 0;
+    let mut acc_bits: usize = 0;
+    let mut in_idx: usize = 0;
+
+    for out in output.iter_mut().take(num_values) {
+        while acc_bits < 25 {
+            acc |= (input[in_idx] as u64) << acc_bits;
+            acc_bits += 8;
+            in_idx += 1;
+        }
+
+        *out = (acc & 0x1FFFFFF) as u32;
+        acc >>= 25;
+        acc_bits -= 25;
+    }
+    Ok(())
+}
+
+#[inline]
+fn unpack_26bit(input: &[u8], num_values: usize, output: &mut [u32]) -> Result<(), Error> {
+    let mut acc: u64 = 0;
+    let mut acc_bits: usize = 0;
+    let mut in_idx: usize = 0;
+
+    for out in output.iter_mut().take(num_values) {
+        while acc_bits < 26 {
+            acc |= (input[in_idx] as u64) << acc_bits;
+            acc_bits += 8;
+            in_idx += 1;
+        }
+
+        *out = (acc & 0x3FFFFFF) as u32;
+        acc >>= 26;
+        acc_bits -= 26;
+    }
+    Ok(())
+}
+
+#[inline]
+fn unpack_27bit(input: &[u8], num_values: usize, output: &mut [u32]) -> Result<(), Error> {
+    let mut acc: u64 = 0;
+    let mut acc_bits: usize = 0;
+    let mut in_idx: usize = 0;
+
+    for out in output.iter_mut().take(num_values) {
+        while acc_bits < 27 {
+            acc |= (input[in_idx] as u64) << acc_bits;
+            acc_bits += 8;
+            in_idx += 1;
+        }
+
+        *out = (acc & 0x7FFFFFF) as u32;
+        acc >>= 27;
+        acc_bits -= 27;
+    }
+    Ok(())
+}
+
+#[inline]
+fn unpack_28bit(input: &[u8], num_values: usize, output: &mut [u32]) -> Result<(), Error> {
+    let mut acc: u64 = 0;
+    let mut acc_bits: usize = 0;
+    let mut in_idx: usize = 0;
+
+    for out in output.iter_mut().take(num_values) {
+        while acc_bits < 28 {
+            acc |= (input[in_idx] as u64) << acc_bits;
+            acc_bits += 8;
+            in_idx += 1;
+        }
+
+        *out = (acc & 0xFFFFFFF) as u32;
+        acc >>= 28;
+        acc_bits -= 28;
+    }
+    Ok(())
+}
+
+#[inline]
+fn unpack_29bit(input: &[u8], num_values: usize, output: &mut [u32]) -> Result<(), Error> {
+    let mut acc: u64 = 0;
+    let mut acc_bits: usize = 0;
+    let mut in_idx: usize = 0;
+
+    for out in output.iter_mut().take(num_values) {
+        while acc_bits < 29 {
+            acc |= (input[in_idx] as u64) << acc_bits;
+            acc_bits += 8;
+            in_idx += 1;
+        }
+
+        *out = (acc & 0x1FFFFFFF) as u32;
+        acc >>= 29;
+        acc_bits -= 29;
+    }
+    Ok(())
+}
+
+#[inline]
+fn unpack_30bit(input: &[u8], num_values: usize, output: &mut [u32]) -> Result<(), Error> {
+    let mut acc: u64 = 0;
+    let mut acc_bits: usize = 0;
+    let mut in_idx: usize = 0;
+
+    for out in output.iter_mut().take(num_values) {
+        while acc_bits < 30 {
+            acc |= (input[in_idx] as u64) << acc_bits;
+            acc_bits += 8;
+            in_idx += 1;
+        }
+
+        *out = (acc & 0x3FFFFFFF) as u32;
+        acc >>= 30;
+        acc_bits -= 30;
+    }
+    Ok(())
+}
+
+#[inline]
+fn unpack_31bit(input: &[u8], num_values: usize, output: &mut [u32]) -> Result<(), Error> {
+    let mut acc: u64 = 0;
+    let mut acc_bits: usize = 0;
+    let mut in_idx: usize = 0;
+
+    for out in output.iter_mut().take(num_values) {
+        while acc_bits < 31 {
+            acc |= (input[in_idx] as u64) << acc_bits;
+            acc_bits += 8;
+            in_idx += 1;
+        }
+
+        *out = (acc & 0x7FFFFFFF) as u32;
+        acc >>= 31;
+        acc_bits -= 31;
     }
     Ok(())
 }

@@ -119,6 +119,38 @@ cargo bench
 | SIMD parallel encoding | Planned |
 | Streaming compression | Planned |
 
+## Performance
+
+### Block-Level Benchmarks (128 values)
+
+| Operation | 1-bit | 8-bit | 16-bit | 24-bit | 32-bit |
+|:----------|------:|------:|-------:|-------:|-------:|
+| Pack | 107 ns | 16 ns | 27 ns | 103 ns | 133 ns |
+| Unpack | 102 ns | 15 ns | 32 ns | 90 ns | 26 ns |
+
+### Throughput (1M values, 16-bit)
+
+- **Compression**: ~7.8 GiB/s
+- **Decompression**: ~4.3 GiB/s
+
+### Compression Ratios
+
+| Data Type | Ratio |
+|:----------|------:|
+| Sequential (0-999) | 23.65% |
+| Constant (all same) | 18.97% |
+| Random (full entropy) | 100.22% |
+
+### Typical Throughput by Bit Width
+
+| Bit Width | Compress | Decompress |
+|:----------|---------:|----------:|
+| 1-bit     | 3-4 GiB/s | 100-170 MiB/s |
+| 8-bit | 7-13 GiB/s | 2-5 GiB/s |
+| 16-bit | 6-10 GiB/s | 3-6 GiB/s |
+| 24-bit | 3-4 GiB/s | 3 GiB/s |
+| 32-bit | 2-3 GiB/s | 8-12 GiB/s |
+
 ## License
 
 MIT
