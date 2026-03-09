@@ -1,5 +1,21 @@
 use crate::error::Error;
 use crate::simd::SimdBackend;
+
+/// Scalar (non-SIMD) implementation of the BP128 bit-packing backend.
+///
+/// This implementation provides correct bit-packing operations without
+/// requiring SIMD instruction sets. It serves as:
+/// - A fallback when SIMD is unavailable
+/// - A reference implementation for correctness verification
+/// - The implementation used for partial blocks (< 128 values)
+///
+/// # Performance
+///
+/// Time complexity: O(n) where n is the number of values.
+/// Throughput: Approximately 2-4 GB/s depending on bit width and CPU.
+///
+/// For higher throughput on x86_64, the dispatch module automatically
+/// selects SSE4.1, AVX2, or AVX512 implementations when available.
 pub struct ScalarBackend;
 
 impl SimdBackend for ScalarBackend {
@@ -13,6 +29,15 @@ impl SimdBackend for ScalarBackend {
 }
 
 impl ScalarBackend {
+    /// Packs a partial block (fewer than 128 values).
+    ///
+    /// Handles the final block in a compressed array. Uses specialized fast paths
+    /// for bit widths 4, 8, 16, 24, and 32.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidBitWidth`] if `bit_width > 32`.
+    /// Returns [`Error::OutputTooSmall`] if output buffer is too small.
     pub fn pack_partial_block(
         input: &[u32],
         bit_width: u8,
@@ -21,6 +46,16 @@ impl ScalarBackend {
         pack_n(input, bit_width, output)
     }
 
+    /// Unpacks a partial block (fewer than 128 values).
+    ///
+    /// Handles the final block in a compressed array. Uses specialized fast paths
+    /// for bit widths 4, 8, 16, 24, and 32.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidBitWidth`] if `bit_width > 32`.
+    /// Returns [`Error::InputTooShort`] if input buffer is too small.
+    /// Returns [`Error::OutputTooSmall`] if output buffer is too small.
     pub fn unpack_partial_block(
         input: &[u8],
         bit_width: u8,

@@ -1,52 +1,78 @@
 /// Unified error type for compression and decompression operations.
+///
+/// This enum serves as the top-level error container that can represent either
+/// a compression or decompression failure. Use pattern matching to handle
+/// specific error cases, or convert to a string using `Display` formatting.
+///
+/// # Example
+///
+/// ```
+/// use simd_bp128::Error;
+///
+/// fn handle_error(err: &Error) -> &'static str {
+///     match err {
+///         Error::InvalidBitWidth(_) => "Invalid bit width",
+///         Error::InputTooShort { .. } => "Input buffer too short",
+///         Error::OutputTooSmall { .. } => "Output buffer too small",
+///         Error::CompressionError(_) => "Compression failed",
+///         Error::DecompressionError(_) => "Decompression failed",
+///     }
+/// }
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Error {
+    /// The specified bit width is invalid (must be 0-32).
     InvalidBitWidth(u8),
+    /// The input buffer does not contain enough data for the operation.
     InputTooShort { need: usize, got: usize },
+    /// The output buffer is too small to hold the result.
     OutputTooSmall { need: usize, got: usize },
+    /// A compression-specific error occurred.
     CompressionError(CompressionError),
+    /// A decompression-specific error occurred.
     DecompressionError(DecompressionError),
 }
 
-/// Compression errors.
+/// Errors that can occur during compression operations.
+///
+/// These errors indicate problems with the input data or output buffer
+/// during the compression process.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CompressionError {
+    /// The input array exceeds the maximum supported size.
     InputTooLarge { max: usize, got: usize },
+    /// The specified bit width is invalid (must be 0-32).
     InvalidBitWidth { bit_width: u8 },
+    /// The output buffer is too small to hold the compressed data.
     OutputTooSmall { need: usize, got: usize },
+    /// The input block size does not match the expected size.
     BlockSizeMismatch { expected: usize, got: usize },
 }
 
-/// Decompression errors.
+/// Errors that can occur during decompression operations.
+///
+/// These errors indicate problems with the compressed data format or
+/// insufficient output buffer space during decompression.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DecompressionError {
-    HeaderTooSmall {
-        needed: usize,
-        have: usize,
-    },
+    /// The compressed data header is incomplete.
+    HeaderTooSmall { needed: usize, have: usize },
+    /// The compressed data is truncated and missing expected bytes.
     TruncatedData {
         position: usize,
         needed: usize,
         have: usize,
     },
-    InvalidBitWidth {
-        bit_width: u8,
-    },
-    BlockCountMismatch {
-        expected: usize,
-        found: usize,
-    },
-    InputTooLarge {
-        max: usize,
-        got: usize,
-    },
-    ExcessiveBlockCount {
-        max: usize,
-        got: usize,
-    },
-    UnsupportedVersion {
-        version: u8,
-    },
+    /// A bit width value exceeds the valid range (0-32).
+    InvalidBitWidth { bit_width: u8 },
+    /// The number of blocks in the header doesn't match the value count.
+    BlockCountMismatch { expected: usize, found: usize },
+    /// The decompressed value count would exceed safe limits.
+    InputTooLarge { max: usize, got: usize },
+    /// The number of blocks exceeds safe limits (possible malformed data).
+    ExcessiveBlockCount { max: usize, got: usize },
+    /// The format version byte is not recognized.
+    UnsupportedVersion { version: u8 },
 }
 
 impl std::fmt::Display for Error {

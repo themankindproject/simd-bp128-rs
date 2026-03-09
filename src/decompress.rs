@@ -217,7 +217,7 @@ pub(crate) fn decompress_into(
 
 /// Decompresses BP128-compressed data back to an array of `u32` integers.
 ///
-/// The decompression process reads the binary format produced by [`compress`]:
+/// The decompression process reads the binary format produced by [`compress`](crate::compress):
 /// 1. Parses header (version, original length, block count)
 /// 2. Reads per-block bit widths
 /// 3. Unpacks each block using the stored bit width
