@@ -43,7 +43,6 @@ fn pack_n(input: &[u32], bit_width: u8, output: &mut [u8]) -> Result<(), Error> 
         return Err(Error::InvalidBitWidth(bit_width));
     }
 
-    // bit_width = 0 means all values are zero, no bits to write
     if bit_width == 0 {
         return Ok(());
     }
@@ -60,15 +59,25 @@ fn pack_n(input: &[u32], bit_width: u8, output: &mut [u8]) -> Result<(), Error> 
         });
     }
 
+    match bits_per_value {
+        4 => return pack_4bit(input, output),
+        5 => return pack_5bit(input, output),
+        6 => return pack_6bit(input, output),
+        7 => return pack_7bit(input, output),
+        8 => return pack_8bit(input, output),
+        12 => return pack_12bit(input, output),
+        16 => return pack_16bit(input, output),
+        24 => return pack_24bit(input, output),
+        32 => return pack_32bit(input, output),
+        _ => {}
+    }
+
     let value_mask: u64 = if bits_per_value >= 32 {
         u32::MAX as u64
     } else {
         (1u64 << bits_per_value) - 1
     };
 
-    // Shift-register (accumulator) approach: buffer bits into a u64,
-    // flush whole bytes as they fill up. Eliminates the inner while-loop
-    // and the two integer divisions (bit_pos / 8, bit_pos % 8) per value.
     let mut acc: u64 = 0;
     let mut acc_bits: usize = 0;
     let mut out_idx: usize = 0;
@@ -77,9 +86,6 @@ fn pack_n(input: &[u32], bit_width: u8, output: &mut [u8]) -> Result<(), Error> 
         acc |= (value as u64 & value_mask) << acc_bits;
         acc_bits += bits_per_value;
 
-        // Flush all complete bytes out of the accumulator.
-        // For small bit widths this may flush several bytes per iteration;
-        // for large ones it may flush zero or one.
         while acc_bits >= 8 {
             output[out_idx] = acc as u8;
             out_idx += 1;
@@ -88,11 +94,165 @@ fn pack_n(input: &[u32], bit_width: u8, output: &mut [u8]) -> Result<(), Error> 
         }
     }
 
-    // Flush any remaining bits (< 8) in the final partial byte.
     if acc_bits > 0 {
         output[out_idx] = acc as u8;
     }
 
+    Ok(())
+}
+
+#[inline]
+fn pack_8bit(input: &[u32], output: &mut [u8]) -> Result<(), Error> {
+    for (i, &value) in input.iter().enumerate() {
+        output[i] = value as u8;
+    }
+    Ok(())
+}
+
+#[inline]
+fn pack_16bit(input: &[u32], output: &mut [u8]) -> Result<(), Error> {
+    for (i, &value) in input.iter().enumerate() {
+        let bytes = value.to_le_bytes();
+        output[i * 2] = bytes[0];
+        output[i * 2 + 1] = bytes[1];
+    }
+    Ok(())
+}
+
+#[inline]
+fn pack_32bit(input: &[u32], output: &mut [u8]) -> Result<(), Error> {
+    for (i, &value) in input.iter().enumerate() {
+        let bytes = value.to_le_bytes();
+        output[i * 4] = bytes[0];
+        output[i * 4 + 1] = bytes[1];
+        output[i * 4 + 2] = bytes[2];
+        output[i * 4 + 3] = bytes[3];
+    }
+    Ok(())
+}
+
+#[inline]
+fn pack_4bit(input: &[u32], output: &mut [u8]) -> Result<(), Error> {
+    let num_values = input.len();
+    for i in (0..num_values).step_by(2) {
+        let lo = (input[i] & 0x0F) as u8;
+        let hi = if i + 1 < num_values {
+            (input[i + 1] & 0x0F) as u8
+        } else {
+            0
+        };
+        output[i / 2] = lo | (hi << 4);
+    }
+    Ok(())
+}
+
+#[inline]
+fn pack_5bit(input: &[u32], output: &mut [u8]) -> Result<(), Error> {
+    let num_values = input.len();
+    let mut acc: u64 = 0;
+    let mut acc_bits: usize = 0;
+    let mut out_idx: usize = 0;
+
+    for &val in input.iter().take(num_values) {
+        acc |= ((val & 0x1F) as u64) << acc_bits;
+        acc_bits += 5;
+
+        while acc_bits >= 8 {
+            output[out_idx] = acc as u8;
+            out_idx += 1;
+            acc >>= 8;
+            acc_bits -= 8;
+        }
+    }
+
+    if acc_bits > 0 {
+        output[out_idx] = acc as u8;
+    }
+    Ok(())
+}
+
+#[inline]
+fn pack_6bit(input: &[u32], output: &mut [u8]) -> Result<(), Error> {
+    let num_values = input.len();
+    let mut acc: u64 = 0;
+    let mut acc_bits: usize = 0;
+    let mut out_idx: usize = 0;
+
+    for &val in input.iter().take(num_values) {
+        acc |= ((val & 0x3F) as u64) << acc_bits;
+        acc_bits += 6;
+
+        while acc_bits >= 8 {
+            output[out_idx] = acc as u8;
+            out_idx += 1;
+            acc >>= 8;
+            acc_bits -= 8;
+        }
+    }
+
+    if acc_bits > 0 {
+        output[out_idx] = acc as u8;
+    }
+    Ok(())
+}
+
+#[inline]
+fn pack_7bit(input: &[u32], output: &mut [u8]) -> Result<(), Error> {
+    let num_values = input.len();
+    let mut acc: u64 = 0;
+    let mut acc_bits: usize = 0;
+    let mut out_idx: usize = 0;
+
+    for &val in input.iter().take(num_values) {
+        acc |= ((val & 0x7F) as u64) << acc_bits;
+        acc_bits += 7;
+
+        while acc_bits >= 8 {
+            output[out_idx] = acc as u8;
+            out_idx += 1;
+            acc >>= 8;
+            acc_bits -= 8;
+        }
+    }
+
+    if acc_bits > 0 {
+        output[out_idx] = acc as u8;
+    }
+    Ok(())
+}
+
+#[inline]
+fn pack_12bit(input: &[u32], output: &mut [u8]) -> Result<(), Error> {
+    let num_values = input.len();
+    let mut acc: u64 = 0;
+    let mut acc_bits: usize = 0;
+    let mut out_idx: usize = 0;
+
+    for &val in input.iter().take(num_values) {
+        acc |= ((val & 0xFFF) as u64) << acc_bits;
+        acc_bits += 12;
+
+        while acc_bits >= 8 {
+            output[out_idx] = acc as u8;
+            out_idx += 1;
+            acc >>= 8;
+            acc_bits -= 8;
+        }
+    }
+
+    if acc_bits > 0 {
+        output[out_idx] = acc as u8;
+    }
+    Ok(())
+}
+
+#[inline]
+fn pack_24bit(input: &[u32], output: &mut [u8]) -> Result<(), Error> {
+    for (i, &value) in input.iter().enumerate() {
+        output[i * 3] = value as u8;
+        output[i * 3 + 1] = (value >> 8) as u8;
+        output[i * 3 + 2] = (value >> 16) as u8;
+    }
     Ok(())
 }
 
@@ -106,7 +266,6 @@ fn unpack_n(
         return Err(Error::InvalidBitWidth(bit_width));
     }
 
-    // bit_width = 0 means all values are zero
     if bit_width == 0 {
         if output.len() < num_values {
             return Err(Error::OutputTooSmall {
@@ -129,21 +288,30 @@ fn unpack_n(
         });
     }
 
+    match bits_per_value {
+        4 => return unpack_4bit(input, num_values, output),
+        5 => return unpack_5bit(input, num_values, output),
+        6 => return unpack_6bit(input, num_values, output),
+        7 => return unpack_7bit(input, num_values, output),
+        8 => return unpack_8bit(input, num_values, output),
+        12 => return unpack_12bit(input, num_values, output),
+        16 => return unpack_16bit(input, num_values, output),
+        24 => return unpack_24bit(input, num_values, output),
+        32 => return unpack_32bit(input, num_values, output),
+        _ => {}
+    }
+
     let value_mask: u64 = if bits_per_value >= 32 {
         u32::MAX as u64
     } else {
         (1u64 << bits_per_value) - 1
     };
 
-    // Mirror of pack_n: drain bits from a u64 accumulator, refilling
-    // from the input byte stream as needed. Eliminates the inner while-loop
-    // and the two integer divisions per value.
     let mut acc: u64 = 0;
     let mut acc_bits: usize = 0;
     let mut in_idx: usize = 0;
 
     for out in output.iter_mut().take(num_values) {
-        // Refill the accumulator until it holds at least bits_per_value bits.
         while acc_bits < bits_per_value {
             acc |= (input[in_idx] as u64) << acc_bits;
             acc_bits += 8;
@@ -155,6 +323,140 @@ fn unpack_n(
         acc_bits -= bits_per_value;
     }
 
+    Ok(())
+}
+
+#[inline]
+fn unpack_8bit(input: &[u8], num_values: usize, output: &mut [u32]) -> Result<(), Error> {
+    for (i, out) in output.iter_mut().take(num_values).enumerate() {
+        *out = input[i] as u32;
+    }
+    Ok(())
+}
+
+#[inline]
+fn unpack_16bit(input: &[u8], num_values: usize, output: &mut [u32]) -> Result<(), Error> {
+    for (i, out) in output.iter_mut().take(num_values).enumerate() {
+        let lo = input[i * 2] as u32;
+        let hi = input[i * 2 + 1] as u32;
+        *out = lo | (hi << 8);
+    }
+    Ok(())
+}
+
+#[inline]
+fn unpack_32bit(input: &[u8], num_values: usize, output: &mut [u32]) -> Result<(), Error> {
+    for (i, out) in output.iter_mut().take(num_values).enumerate() {
+        let lo = input[i * 4] as u32;
+        let mid1 = input[i * 4 + 1] as u32;
+        let mid2 = input[i * 4 + 2] as u32;
+        let hi = input[i * 4 + 3] as u32;
+        *out = lo | (mid1 << 8) | (mid2 << 16) | (hi << 24);
+    }
+    Ok(())
+}
+
+#[inline]
+fn unpack_4bit(input: &[u8], num_values: usize, output: &mut [u32]) -> Result<(), Error> {
+    for i in 0..num_values {
+        let byte = input[i / 2];
+        output[i] = if i % 2 == 0 {
+            (byte & 0x0F) as u32
+        } else {
+            (byte >> 4) as u32
+        };
+    }
+    Ok(())
+}
+
+#[inline]
+fn unpack_5bit(input: &[u8], num_values: usize, output: &mut [u32]) -> Result<(), Error> {
+    let mut acc: u64 = 0;
+    let mut acc_bits: usize = 0;
+    let mut in_idx: usize = 0;
+
+    for out in output.iter_mut().take(num_values) {
+        while acc_bits < 5 {
+            acc |= (input[in_idx] as u64) << acc_bits;
+            acc_bits += 8;
+            in_idx += 1;
+        }
+
+        *out = (acc & 0x1F) as u32;
+        acc >>= 5;
+        acc_bits -= 5;
+    }
+    Ok(())
+}
+
+#[inline]
+fn unpack_6bit(input: &[u8], num_values: usize, output: &mut [u32]) -> Result<(), Error> {
+    let mut acc: u64 = 0;
+    let mut acc_bits: usize = 0;
+    let mut in_idx: usize = 0;
+
+    for out in output.iter_mut().take(num_values) {
+        while acc_bits < 6 {
+            acc |= (input[in_idx] as u64) << acc_bits;
+            acc_bits += 8;
+            in_idx += 1;
+        }
+
+        *out = (acc & 0x3F) as u32;
+        acc >>= 6;
+        acc_bits -= 6;
+    }
+    Ok(())
+}
+
+#[inline]
+fn unpack_7bit(input: &[u8], num_values: usize, output: &mut [u32]) -> Result<(), Error> {
+    let mut acc: u64 = 0;
+    let mut acc_bits: usize = 0;
+    let mut in_idx: usize = 0;
+
+    for out in output.iter_mut().take(num_values) {
+        while acc_bits < 7 {
+            acc |= (input[in_idx] as u64) << acc_bits;
+            acc_bits += 8;
+            in_idx += 1;
+        }
+
+        *out = (acc & 0x7F) as u32;
+        acc >>= 7;
+        acc_bits -= 7;
+    }
+    Ok(())
+}
+
+#[inline]
+fn unpack_12bit(input: &[u8], num_values: usize, output: &mut [u32]) -> Result<(), Error> {
+    let mut acc: u64 = 0;
+    let mut acc_bits: usize = 0;
+    let mut in_idx: usize = 0;
+
+    for out in output.iter_mut().take(num_values) {
+        while acc_bits < 12 {
+            acc |= (input[in_idx] as u64) << acc_bits;
+            acc_bits += 8;
+            in_idx += 1;
+        }
+
+        *out = (acc & 0xFFF) as u32;
+        acc >>= 12;
+        acc_bits -= 12;
+    }
+    Ok(())
+}
+
+#[inline]
+fn unpack_24bit(input: &[u8], num_values: usize, output: &mut [u32]) -> Result<(), Error> {
+    for (i, out) in output.iter_mut().take(num_values).enumerate() {
+        let lo = input[i * 3] as u32;
+        let mid = input[i * 3 + 1] as u32;
+        let hi = input[i * 3 + 2] as u32;
+        *out = lo | (mid << 8) | (hi << 16);
+    }
     Ok(())
 }
 

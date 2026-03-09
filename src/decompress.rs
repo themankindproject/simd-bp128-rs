@@ -1,48 +1,21 @@
 use crate::bitwidth::{packed_block_size, packed_partial_block_size};
 use crate::dispatch::unpack_block_dispatch;
-use crate::error::DecompressionError;
+use crate::error::{DecompressionError, Error};
 use crate::simd::scalar::ScalarBackend;
 use crate::{BLOCK_SIZE, FORMAT_VERSION};
 
 const MAX_DECOMPRESSED_VALUES: usize = 1_000_000_000;
 const MAX_BLOCKS: usize = MAX_DECOMPRESSED_VALUES / 128 + 1;
+const HEADER_SIZE: usize = 9;
 
-/// Decompresses BP128-compressed data back to an array of `u32` integers.
+/// Returns the number of decompressed values from the compressed input.
 ///
-/// The decompression process reads the binary format produced by [`compress`]:
-/// 1. Parses header (version, original length, block count)
-/// 2. Reads per-block bit widths
-/// 3. Unpacks each block using the stored bit width
-///
-/// # Errors
-///
-/// Returns `Err(DecompressionError)` if the input is malformed:
-/// - [`DecompressionError::HeaderTooSmall`] - Input shorter than 9 bytes
-/// - [`DecompressionError::UnsupportedVersion`] - Version byte not equal to 1
-/// - [`DecompressionError::InvalidBitWidth`] - Bit width byte > 32
-/// - [`DecompressionError::TruncatedData`] - Insufficient bytes for packed data
-/// - [`DecompressionError::BlockCountMismatch`] - Block count doesn't match length
-///
-/// # Panics
-///
-/// Does not panic. All errors are returned as [`DecompressionError`].
-///
-/// # Example
-///
-/// ```
-/// use simd_bp128::{compress, decompress};
-///
-/// let data: Vec<u32> = (0..256).map(|i| i % 1000).collect();
-/// let compressed = compress(&data).unwrap();
-/// let decompressed = decompress(&compressed).unwrap();
-/// assert_eq!(data, decompressed);
-/// ```
-pub fn decompress(input: &[u8]) -> Result<Vec<u32>, DecompressionError> {
+/// This parses the header to extract the original input length.
+/// Returns an error if the input is malformed.
+pub(crate) fn max_decompressed_size(input: &[u8]) -> Result<usize, DecompressionError> {
     if input.is_empty() {
-        return Ok(Vec::new());
+        return Ok(0);
     }
-
-    const HEADER_SIZE: usize = 9;
 
     if input.len() < HEADER_SIZE {
         return Err(DecompressionError::HeaderTooSmall {
@@ -92,32 +65,49 @@ pub fn decompress(input: &[u8]) -> Result<Vec<u32>, DecompressionError> {
 
     let bit_widths = &input[HEADER_SIZE..HEADER_SIZE + num_blocks];
 
-    // Validate all bit widths up front in a single cheap pass — no size
-    // computation here, just reject obviously bad input before allocating.
     for &bw in bit_widths {
         if bw > 32 {
             return Err(DecompressionError::InvalidBitWidth { bit_width: bw });
         }
     }
 
-    // Allocate the full output buffer once. All blocks unpack directly into
-    // their target slice — no intermediate [u32; 128] stack buffer, no
-    // extend_from_slice copy, and zero-width blocks need no work at all
-    // because the allocation is already zeroed.
-    let mut output = vec![0u32; total_count];
+    Ok(total_count)
+}
+
+/// Decompresses `input` into the provided `output` buffer.
+///
+/// Returns the number of values written on success.
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The input header is malformed
+/// - `output.len()` is less than the decompressed size
+pub(crate) fn decompress_into(
+    input: &[u8],
+    output: &mut [u32],
+) -> Result<usize, DecompressionError> {
+    let total_count = max_decompressed_size(input)?;
+
+    if output.len() < total_count {
+        return Err(DecompressionError::TruncatedData {
+            position: 0,
+            needed: total_count,
+            have: output.len(),
+        });
+    }
+
+    let num_blocks = u32::from_le_bytes([input[5], input[6], input[7], input[8]]) as usize;
+    let bit_widths = &input[HEADER_SIZE..HEADER_SIZE + num_blocks];
+
     let mut data_pos = HEADER_SIZE + num_blocks;
     let num_full_blocks = total_count / BLOCK_SIZE;
     let remaining = total_count % BLOCK_SIZE;
 
-    // --- Hot path: full blocks of exactly BLOCK_SIZE values ---
-    // Splitting full and partial blocks into separate loops lets the compiler
-    // see a fixed 128-element stride, eliminating the .min(BLOCK_SIZE) branch
-    // on every iteration.
     for (block_idx, &bit_width) in bit_widths.iter().enumerate().take(num_full_blocks) {
         let write_pos = block_idx * BLOCK_SIZE;
 
         if bit_width == 0 {
-            // Output is pre-zeroed; nothing to read from input.
             continue;
         }
 
@@ -141,40 +131,33 @@ pub fn decompress(input: &[u8]) -> Result<Vec<u32>, DecompressionError> {
 
         let packed_data = &input[data_pos..data_end];
 
-        // Unpack directly into the output slice — no stack buffer or memcpy.
         let dest: &mut [u32; BLOCK_SIZE] = (&mut output[write_pos..write_pos + BLOCK_SIZE])
             .try_into()
             .expect("slice length equals BLOCK_SIZE");
 
         unpack_block_dispatch(packed_data, bit_width, dest).map_err(|e| match e {
-            crate::error::Error::InvalidBitWidth(bw) => {
-                DecompressionError::InvalidBitWidth { bit_width: bw }
-            }
-            crate::error::Error::InputTooShort { need, got } => DecompressionError::TruncatedData {
+            Error::InvalidBitWidth(bw) => DecompressionError::InvalidBitWidth { bit_width: bw },
+            Error::InputTooShort { need, got } => DecompressionError::TruncatedData {
                 position: data_pos,
                 needed: need,
                 have: got,
             },
-            crate::error::Error::OutputTooSmall { need, got } => {
-                DecompressionError::TruncatedData {
-                    position: data_pos,
-                    needed: need,
-                    have: got,
-                }
-            }
-            crate::error::Error::CompressionError(_) => DecompressionError::TruncatedData {
+            Error::OutputTooSmall { need, got } => DecompressionError::TruncatedData {
+                position: data_pos,
+                needed: need,
+                have: got,
+            },
+            Error::CompressionError(_) => DecompressionError::TruncatedData {
                 position: data_pos,
                 needed: packed_size,
                 have: 0,
             },
-            crate::error::Error::DecompressionError(inner) => inner,
+            Error::DecompressionError(inner) => inner,
         })?;
 
-        // Reuse data_end rather than checked_add a second time.
         data_pos = data_end;
     }
 
-    // --- Partial block (last block only, 1-127 values) ---
     if remaining > 0 {
         let block_idx = num_full_blocks;
         let bit_width = bit_widths[block_idx];
@@ -208,40 +191,69 @@ pub fn decompress(input: &[u8]) -> Result<Vec<u32>, DecompressionError> {
                 &mut output[write_pos..write_pos + remaining],
             )
             .map_err(|e| match e {
-                crate::error::Error::InvalidBitWidth(bw) => {
-                    DecompressionError::InvalidBitWidth { bit_width: bw }
-                }
-                crate::error::Error::InputTooShort { need, got } => {
-                    DecompressionError::TruncatedData {
-                        position: data_pos,
-                        needed: need,
-                        have: got,
-                    }
-                }
-                crate::error::Error::OutputTooSmall { need, got } => {
-                    DecompressionError::TruncatedData {
-                        position: data_pos,
-                        needed: need,
-                        have: got,
-                    }
-                }
-                crate::error::Error::CompressionError(_) => DecompressionError::TruncatedData {
+                Error::InvalidBitWidth(bw) => DecompressionError::InvalidBitWidth { bit_width: bw },
+                Error::InputTooShort { need, got } => DecompressionError::TruncatedData {
+                    position: data_pos,
+                    needed: need,
+                    have: got,
+                },
+                Error::OutputTooSmall { need, got } => DecompressionError::TruncatedData {
+                    position: data_pos,
+                    needed: need,
+                    have: got,
+                },
+                Error::CompressionError(_) => DecompressionError::TruncatedData {
                     position: data_pos,
                     needed: packed_size,
                     have: 0,
                 },
-                crate::error::Error::DecompressionError(inner) => inner,
+                Error::DecompressionError(inner) => inner,
             })?;
         }
-        // bit_width == 0: output already zeroed, nothing to do.
     }
 
-    if output.len() != total_count {
-        return Err(DecompressionError::BlockCountMismatch {
-            expected: total_count,
-            found: output.len(),
-        });
+    Ok(total_count)
+}
+
+/// Decompresses BP128-compressed data back to an array of `u32` integers.
+///
+/// The decompression process reads the binary format produced by [`compress`]:
+/// 1. Parses header (version, original length, block count)
+/// 2. Reads per-block bit widths
+/// 3. Unpacks each block using the stored bit width
+///
+/// # Errors
+///
+/// Returns `Err(DecompressionError)` if the input is malformed:
+/// - [`DecompressionError::HeaderTooSmall`] - Input shorter than 9 bytes
+/// - [`DecompressionError::UnsupportedVersion`] - Version byte not equal to 1
+/// - [`DecompressionError::InvalidBitWidth`] - Bit width byte > 32
+/// - [`DecompressionError::TruncatedData`] - Insufficient bytes for packed data
+/// - [`DecompressionError::BlockCountMismatch`] - Block count doesn't match length
+///
+/// # Panics
+///
+/// Does not panic. All errors are returned as [`DecompressionError`].
+///
+/// # Example
+///
+/// ```
+/// use simd_bp128::{compress, decompress};
+///
+/// let data: Vec<u32> = (0..256).map(|i| i % 1000).collect();
+/// let compressed = compress(&data).unwrap();
+/// let decompressed = decompress(&compressed).unwrap();
+/// assert_eq!(data, decompressed);
+/// ```
+pub fn decompress(input: &[u8]) -> Result<Vec<u32>, DecompressionError> {
+    if input.is_empty() {
+        return Ok(Vec::new());
     }
+
+    let total_count: usize = max_decompressed_size(input)?;
+
+    let mut output: Vec<u32> = vec![0u32; total_count];
+    decompress_into(input, &mut output)?;
 
     Ok(output)
 }

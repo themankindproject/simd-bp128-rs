@@ -4,6 +4,120 @@ use crate::error::{CompressionError, Error};
 use crate::simd::scalar::ScalarBackend;
 use crate::{BLOCK_SIZE, FORMAT_VERSION};
 
+/// Returns the maximum buffer size needed to compress `input_len` values.
+///
+/// This is the worst-case size assuming all blocks use 32-bit width.
+/// The actual compressed size will be equal to or less than this value.
+pub(crate) fn max_compressed_size(input_len: usize) -> usize {
+    if input_len == 0 {
+        return 0;
+    }
+    let num_full_blocks: usize = input_len / BLOCK_SIZE;
+    let remaining: usize = input_len % BLOCK_SIZE;
+    let num_blocks: usize = num_full_blocks + usize::from(remaining > 0);
+    1 + 8 + num_blocks + num_blocks * packed_block_size(32)
+}
+
+/// Compresses `input` into the provided `output` buffer.
+///
+/// Returns the number of bytes written on success.
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - `input.len() > u32::MAX`
+/// - `output.len() < max_compressed_size(input.len())`
+pub(crate) fn compress_into(input: &[u32], output: &mut [u8]) -> Result<usize, Error> {
+    if input.is_empty() {
+        return Ok(0);
+    }
+
+    if input.len() > u32::MAX as usize {
+        return Err(CompressionError::InputTooLarge {
+            max: u32::MAX as usize,
+            got: input.len(),
+        }
+        .into());
+    }
+
+    let num_full_blocks: usize = input.len() / BLOCK_SIZE;
+    let remaining: usize = input.len() % BLOCK_SIZE;
+    let num_blocks: usize = num_full_blocks + usize::from(remaining > 0);
+
+    let required_size = max_compressed_size(input.len());
+    if output.len() < required_size {
+        return Err(CompressionError::OutputTooSmall {
+            need: required_size,
+            got: output.len(),
+        }
+        .into());
+    }
+
+    let mut offset: usize = 0;
+
+    output[offset] = FORMAT_VERSION;
+    offset += 1;
+    output[offset..offset + 4].copy_from_slice(&(input.len() as u32).to_le_bytes());
+    offset += 4;
+    output[offset..offset + 4].copy_from_slice(&(num_blocks as u32).to_le_bytes());
+    offset += 4;
+
+    let bit_widths_offset: usize = offset;
+    offset += num_blocks;
+
+    for block_idx in 0..num_full_blocks {
+        let start: usize = block_idx * BLOCK_SIZE;
+        let block: &[u32] = &input[start..start + BLOCK_SIZE];
+
+        let acc = {
+            let mut acc = 0u32;
+            for &v in block {
+                acc |= v;
+            }
+            acc
+        };
+        let bit_width = required_bit_width(acc);
+
+        output[bit_widths_offset + block_idx] = bit_width;
+
+        let packed_size: usize = packed_block_size(bit_width);
+        if packed_size == 0 {
+            continue;
+        }
+
+        let block_array: [u32; BLOCK_SIZE] = block
+            .try_into()
+            .expect("block slice length equals BLOCK_SIZE; conversion is infallible");
+
+        pack_block_dispatch(&block_array, bit_width, &mut output[offset..])?;
+        offset += packed_size;
+    }
+
+    if remaining > 0 {
+        let start: usize = num_full_blocks * BLOCK_SIZE;
+        let block: &[u32] = &input[start..];
+
+        let acc = {
+            let mut acc = 0u32;
+            for &v in block {
+                acc |= v;
+            }
+            acc
+        };
+        let bit_width: u8 = required_bit_width(acc);
+
+        output[bit_widths_offset + num_full_blocks] = bit_width;
+
+        let packed_size: usize = packed_partial_block_size(remaining, bit_width);
+        if packed_size > 0 {
+            ScalarBackend::pack_partial_block(block, bit_width, &mut output[offset..])?;
+            offset += packed_size;
+        }
+    }
+
+    Ok(offset)
+}
+
 /// Compresses an array of `u32` integers using the BP128 algorithm.
 ///
 /// BP128 divides input into blocks of 128 values and stores each block using the
@@ -49,84 +163,11 @@ pub fn compress(input: &[u32]) -> Result<Vec<u8>, Error> {
         return Ok(Vec::new());
     }
 
-    if input.len() > u32::MAX as usize {
-        return Err(CompressionError::InputTooLarge {
-            max: u32::MAX as usize,
-            got: input.len(),
-        }
-        .into());
-    }
+    let max_size = max_compressed_size(input.len());
+    let mut output = vec![0; max_size];
 
-    let num_full_blocks: usize = input.len() / BLOCK_SIZE;
-    let remaining: usize = input.len() % BLOCK_SIZE;
-    let num_blocks: usize = num_full_blocks + usize::from(remaining > 0);
-
-    debug_assert!(num_blocks <= u32::MAX as usize, "num_blocks overflows u32");
-
-    // Worst-case size: every block packed at full 32-bit width.
-    let max_size: usize = 1 + 8 + num_blocks + num_blocks * packed_block_size(32);
-    let mut output: Vec<u8> = Vec::with_capacity(max_size);
-
-    output.push(FORMAT_VERSION);
-    output.extend_from_slice(&(input.len() as u32).to_le_bytes());
-    output.extend_from_slice(&(num_blocks as u32).to_le_bytes());
-
-    let bit_widths_offset: usize = output.len();
-
-    // Pre-size the entire buffer to max_size once. All subsequent writes go
-    // directly into existing slots — no reallocation or resize inside the loop.
-    output.resize(max_size, 0);
-
-    let mut data_offset: usize = bit_widths_offset + num_blocks;
-
-    for block_idx in 0..num_full_blocks {
-        let start: usize = block_idx * BLOCK_SIZE;
-        let block: &[u32] = &input[start..start + BLOCK_SIZE];
-
-        debug_assert_eq!(block.len(), BLOCK_SIZE);
-
-        let acc = block.iter().fold(0u32, |a, &v| a | v);
-        let bit_width = required_bit_width(acc);
-
-        output[bit_widths_offset + block_idx] = bit_width;
-
-        let packed_size: usize = packed_block_size(bit_width);
-        if packed_size == 0 {
-            continue;
-        }
-
-        let block_array: [u32; BLOCK_SIZE] = block
-            .try_into()
-            .expect("block slice length equals BLOCK_SIZE; conversion is infallible");
-
-        pack_block_dispatch(&block_array, bit_width, &mut output[data_offset..])?;
-        data_offset += packed_size;
-    }
-
-    if remaining > 0 {
-        let start: usize = num_full_blocks * BLOCK_SIZE;
-        let block: &[u32] = &input[start..];
-
-        let acc: u32 = block.iter().fold(0u32, |a, &v| a | v);
-        let bit_width: u8 = required_bit_width(acc);
-
-        output[bit_widths_offset + num_full_blocks] = bit_width;
-
-        let packed_size: usize = packed_partial_block_size(remaining, bit_width);
-        if packed_size > 0 {
-            ScalarBackend::pack_partial_block(block, bit_width, &mut output[data_offset..])?;
-            data_offset += packed_size;
-        }
-    }
-
-    // Trim to actual bytes written — this is O(1), no reallocation.
-    output.truncate(data_offset);
-
-    debug_assert_eq!(
-        output.len(),
-        data_offset,
-        "data_offset must equal output length"
-    );
+    let bytes_written = compress_into(input, &mut output)?;
+    output.truncate(bytes_written);
 
     Ok(output)
 }
