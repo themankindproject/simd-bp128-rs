@@ -56,5 +56,6 @@ pub(crate) const FORMAT_VERSION: u8 = 1;
 #[doc(hidden)]
 pub mod internal {
     pub use crate::simd::scalar::ScalarBackend;
+    pub use crate::simd::sse::SseBackend;
     pub use crate::simd::SimdBackend;
 }

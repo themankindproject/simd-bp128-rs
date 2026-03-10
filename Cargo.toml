@@ -33,6 +33,10 @@ harness = false
 name = "throughput"
 harness = false
 
+[[bench]]
+name = "throughput_comparison"
+harness = false
+
 [profile.release]
 opt-level = 3
 lto = "fat"
