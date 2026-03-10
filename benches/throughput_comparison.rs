@@ -63,7 +63,7 @@ fn benchmark_scalar_vs_sse(c: &mut Criterion) {
 
         // Scalar pack
         group.throughput(Throughput::Bytes(input_bytes as u64));
-        group.bench_function(&format!("scalar_pack_{}bit", bits), |b| {
+        group.bench_function(format!("scalar_pack_{}bit", bits), |b| {
             b.iter(|| {
                 ScalarBackend::pack_block(
                     black_box(&block),
@@ -78,7 +78,7 @@ fn benchmark_scalar_vs_sse(c: &mut Criterion) {
         #[cfg(target_arch = "x86_64")]
         {
             group.throughput(Throughput::Bytes(input_bytes as u64));
-            group.bench_function(&format!("sse_pack_{}bit", bits), |b| {
+            group.bench_function(format!("sse_pack_{}bit", bits), |b| {
                 b.iter(|| {
                     SseBackend::pack_block(
                         black_box(&block),
@@ -92,7 +92,7 @@ fn benchmark_scalar_vs_sse(c: &mut Criterion) {
 
         // Scalar unpack
         group.throughput(Throughput::Bytes(bytes_needed as u64));
-        group.bench_function(&format!("scalar_unpack_{}bit", bits), |b| {
+        group.bench_function(format!("scalar_unpack_{}bit", bits), |b| {
             b.iter(|| {
                 ScalarBackend::unpack_block(
                     black_box(&scalar_packed),
@@ -107,7 +107,7 @@ fn benchmark_scalar_vs_sse(c: &mut Criterion) {
         #[cfg(target_arch = "x86_64")]
         {
             group.throughput(Throughput::Bytes(bytes_needed as u64));
-            group.bench_function(&format!("sse_unpack_{}bit", bits), |b| {
+            group.bench_function(format!("sse_unpack_{}bit", bits), |b| {
                 b.iter(|| {
                     SseBackend::unpack_block(
                         black_box(&sse_packed),
@@ -150,7 +150,7 @@ fn benchmark_full_compression(c: &mut Criterion) {
             let compressed_bytes = compressed.len() as u64;
 
             group.throughput(Throughput::Bytes(input_bytes));
-            group.bench_function(&format!("compress_{}_{}bit", name, bits), |b| {
+            group.bench_function(format!("compress_{}_{}bit", name, bits), |b| {
                 b.iter(|| {
                     let result = compress(black_box(&data)).expect("Compression failed");
                     let _ = black_box(result);
@@ -158,7 +158,7 @@ fn benchmark_full_compression(c: &mut Criterion) {
             });
 
             group.throughput(Throughput::Bytes(compressed_bytes));
-            group.bench_function(&format!("decompress_{}_{}bit", name, bits), |b| {
+            group.bench_function(format!("decompress_{}_{}bit", name, bits), |b| {
                 b.iter(|| {
                     let result = decompress(black_box(&compressed)).expect("Decompression failed");
                     let _ = black_box(result);
