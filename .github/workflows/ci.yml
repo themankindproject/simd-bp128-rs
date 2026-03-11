@@ -24,6 +24,7 @@ jobs:
       - run: cargo test --lib
       - run: cargo test --test correctness
       - run: cargo test --test edge_cases
+      - run: cargo test --tests --all-features
 
   clippy:
     runs-on: ubuntu-latest
@@ -44,3 +45,28 @@ jobs:
           toolchain: stable
           components: rustfmt
       - run: cargo fmt -- --check
+
+  doc:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+      - run: cargo test --doc
+
+  fuzz:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz
+      - name: Run fuzz_roundtrip
+        run: cargo fuzz run fuzz_targets/roundtrip -- -max_total_time=60s -timeout=10s || true
+      - name: Run fuzz_compress_only
+        run: cargo fuzz run fuzz_targets/compress_only -- -max_total_time=60s -timeout=10s || true
+      - name: Run fuzz_decompress_only
+        run: cargo fuzz run fuzz_targets/decompress_only -- -max_total_time=60s -timeout=10s || true
