@@ -2,6 +2,9 @@ use crate::error::Error;
 use crate::simd::scalar::ScalarBackend;
 use crate::simd::SimdBackend;
 
+#[cfg(target_arch = "x86_64")]
+use crate::simd::sse::SseBackend;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum BackendType {
     Scalar,
@@ -37,39 +40,29 @@ pub(crate) fn get_backend() -> BackendType {
     *BACKEND.get_or_init(detect_best_backend)
 }
 
+#[inline(always)]
 pub(crate) fn pack_block_dispatch(
     input: &[u32; 128],
     bit_width: u8,
     output: &mut [u8],
 ) -> Result<(), Error> {
-    let backend: BackendType = get_backend();
-
-    match backend {
+    match get_backend() {
         BackendType::Scalar => ScalarBackend::pack_block(input, bit_width, output),
         #[cfg(target_arch = "x86_64")]
-        BackendType::Sse => ScalarBackend::pack_block(input, bit_width, output),
-        #[cfg(target_arch = "x86_64")]
-        BackendType::Avx2 => ScalarBackend::pack_block(input, bit_width, output),
-        #[cfg(target_arch = "x86_64")]
-        BackendType::Avx512 => ScalarBackend::pack_block(input, bit_width, output),
+        _ => SseBackend::pack_block(input, bit_width, output),
     }
 }
 
+#[inline(always)]
 pub(crate) fn unpack_block_dispatch(
     input: &[u8],
     bit_width: u8,
     output: &mut [u32; 128],
 ) -> Result<(), Error> {
-    let backend = get_backend();
-
-    match backend {
+    match get_backend() {
         BackendType::Scalar => ScalarBackend::unpack_block(input, bit_width, output),
         #[cfg(target_arch = "x86_64")]
-        BackendType::Sse => ScalarBackend::unpack_block(input, bit_width, output),
-        #[cfg(target_arch = "x86_64")]
-        BackendType::Avx2 => ScalarBackend::unpack_block(input, bit_width, output),
-        #[cfg(target_arch = "x86_64")]
-        BackendType::Avx512 => ScalarBackend::unpack_block(input, bit_width, output),
+        _ => SseBackend::unpack_block(input, bit_width, output),
     }
 }
 

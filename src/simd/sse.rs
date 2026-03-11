@@ -19,25 +19,23 @@ use crate::simd::SimdBackend;
 pub struct SseBackend;
 
 impl SimdBackend for SseBackend {
-    #[inline]
+    #[inline(always)]
     fn pack_block(input: &[u32; 128], bit_width: u8, output: &mut [u8]) -> Result<(), Error> {
         #[cfg(target_arch = "x86_64")]
-        {
-            if is_x86_feature_detected!("sse4.1") {
-                return unsafe { pack_block_sse41(input, bit_width, output) };
-            }
+        unsafe {
+            sse_impl::pack_block_sse41(input, bit_width, output)
         }
+        #[cfg(not(target_arch = "x86_64"))]
         ScalarBackend::pack_block(input, bit_width, output)
     }
 
-    #[inline]
+    #[inline(always)]
     fn unpack_block(input: &[u8], bit_width: u8, output: &mut [u32; 128]) -> Result<(), Error> {
         #[cfg(target_arch = "x86_64")]
-        {
-            if is_x86_feature_detected!("sse4.1") {
-                return unsafe { unpack_block_sse41(input, bit_width, output) };
-            }
+        unsafe {
+            sse_impl::unpack_block_sse41(input, bit_width, output)
         }
+        #[cfg(not(target_arch = "x86_64"))]
         ScalarBackend::unpack_block(input, bit_width, output)
     }
 }
@@ -789,34 +787,6 @@ mod sse_impl {
 
         Ok(())
     }
-}
-
-/// Wrapper for SSE4.1 pack block.
-///
-/// # Safety
-/// Requires SSE4.1 support. Caller must ensure input/output buffers are valid.
-#[cfg(target_arch = "x86_64")]
-#[target_feature(enable = "sse4.1")]
-unsafe fn pack_block_sse41(
-    input: &[u32; 128],
-    bit_width: u8,
-    output: &mut [u8],
-) -> Result<(), Error> {
-    sse_impl::pack_block_sse41(input, bit_width, output)
-}
-
-/// Wrapper for SSE4.1 unpack block.
-///
-/// # Safety
-/// Requires SSE4.1 support. Caller must ensure input/output buffers are valid.
-#[cfg(target_arch = "x86_64")]
-#[target_feature(enable = "sse4.1")]
-unsafe fn unpack_block_sse41(
-    input: &[u8],
-    bit_width: u8,
-    output: &mut [u32; 128],
-) -> Result<(), Error> {
-    sse_impl::unpack_block_sse41(input, bit_width, output)
 }
 
 #[cfg(all(test, target_arch = "x86_64"))]

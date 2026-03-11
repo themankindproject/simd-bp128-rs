@@ -85,11 +85,11 @@ pub(crate) fn compress_into(input: &[u32], output: &mut [u8]) -> Result<usize, E
             continue;
         }
 
-        let block_array: [u32; BLOCK_SIZE] = block
-            .try_into()
-            .expect("block slice length equals BLOCK_SIZE; conversion is infallible");
-
-        pack_block_dispatch(&block_array, bit_width, &mut output[offset..])?;
+        pack_block_dispatch(
+            unsafe { &*(block.as_ptr() as *const [u32; BLOCK_SIZE]) },
+            bit_width,
+            &mut output[offset..],
+        )?;
         offset += packed_size;
     }
 

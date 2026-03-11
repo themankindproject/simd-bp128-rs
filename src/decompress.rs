@@ -131,11 +131,10 @@ pub(crate) fn decompress_into(
 
         let packed_data = &input[data_pos..data_end];
 
-        let dest: &mut [u32; BLOCK_SIZE] = (&mut output[write_pos..write_pos + BLOCK_SIZE])
-            .try_into()
-            .expect("slice length equals BLOCK_SIZE");
-
-        unpack_block_dispatch(packed_data, bit_width, dest).map_err(|e| match e {
+        unpack_block_dispatch(packed_data, bit_width, unsafe {
+            &mut *(output.as_mut_ptr().add(write_pos) as *mut [u32; BLOCK_SIZE])
+        })
+        .map_err(|e| match e {
             Error::InvalidBitWidth(bw) => DecompressionError::InvalidBitWidth { bit_width: bw },
             Error::InputTooShort { need, got } => DecompressionError::TruncatedData {
                 position: data_pos,
