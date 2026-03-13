@@ -85,6 +85,9 @@ pub(crate) fn compress_into(input: &[u32], output: &mut [u8]) -> Result<usize, E
             continue;
         }
 
+        // SAFETY: We know block has exactly BLOCK_SIZE (128) elements because
+        // we sliced input[block_idx * BLOCK_SIZE..(block_idx+1) * BLOCK_SIZE].
+        // Casting &[u32] to &[u32; 128] is safe when the length is exactly 128.
         pack_block_dispatch(
             unsafe { &*(block.as_ptr() as *const [u32; BLOCK_SIZE]) },
             bit_width,

@@ -30,7 +30,7 @@ cargo test --all
 cargo bench
 
 # Run examples
-cargo run --example
+cargo run --package simd-bp128-examples
 ```
 
 ## Usage
@@ -113,7 +113,7 @@ cargo bench
 | Feature | Status |
 |:--------|:-------|
 | Scalar implementation | Done |
-| SSE backend | Planned |
+| SSE backend | Done |
 | AVX2 backend | Planned |
 | AVX512 backend | Planned |
 | SIMD parallel encoding | Planned |

@@ -131,6 +131,10 @@ pub(crate) fn decompress_into(
 
         let packed_data = &input[data_pos..data_end];
 
+        // SAFETY: We know output has at least total_count elements from the check above.
+        // write_pos is block_idx * BLOCK_SIZE, and we process num_full_blocks where
+        // num_full_blocks * BLOCK_SIZE <= total_count <= output.len().
+        // Therefore write_pos + BLOCK_SIZE <= output.len(), making this cast safe.
         unpack_block_dispatch(packed_data, bit_width, unsafe {
             &mut *(output.as_mut_ptr().add(write_pos) as *mut [u32; BLOCK_SIZE])
         })
