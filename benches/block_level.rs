@@ -1,4 +1,4 @@
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, Criterion, Throughput};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use simd_bp128::internal::{ScalarBackend, SimdBackend};
@@ -18,7 +18,6 @@ fn make_block(bits: u32) -> [u32; 128] {
     block
 }
 
-/// Returns the exact byte length needed to pack 128 values at `bits` bits each.
 fn packed_bytes(bits: u32) -> usize {
     (128 * bits as usize + 7) / 8
 }
@@ -34,7 +33,10 @@ fn benchmark_block_level(c: &mut Criterion) {
         ScalarBackend::pack_block(&block, bits as u8, &mut packed)
             .expect("pack_block warm-up failed");
 
-        c.bench_function(&format!("pack_block_128_{}bit", bits), |b| {
+        let input_bytes = 128 * 4;
+        let mut group = c.benchmark_group(format!("pack_block_128_{}bit", bits));
+        group.throughput(Throughput::Bytes(input_bytes as u64));
+        group.bench_function("pack", |b| {
             b.iter(|| {
                 ScalarBackend::pack_block(
                     black_box(&block),
@@ -44,8 +46,11 @@ fn benchmark_block_level(c: &mut Criterion) {
                 .expect("pack_block failed");
             });
         });
+        group.finish();
 
-        c.bench_function(&format!("unpack_block_128_{}bit", bits), |b| {
+        let mut group = c.benchmark_group(format!("unpack_block_128_{}bit", bits));
+        group.throughput(Throughput::Bytes(n as u64));
+        group.bench_function("unpack", |b| {
             b.iter(|| {
                 ScalarBackend::unpack_block(
                     black_box(&packed),
@@ -55,6 +60,7 @@ fn benchmark_block_level(c: &mut Criterion) {
                 .expect("unpack_block failed");
             });
         });
+        group.finish();
     }
 
     for bits in [8u32, 16] {
@@ -70,7 +76,11 @@ fn benchmark_block_level(c: &mut Criterion) {
         ScalarBackend::pack_partial_block(&partial, bits as u8, &mut packed)
             .expect("pack_partial_block warm-up failed");
 
-        c.bench_function(&format!("pack_partial_block_64_{}bit", bits), |b| {
+        let partial_input_bytes = count * 4;
+
+        let mut group = c.benchmark_group(format!("pack_partial_block_64_{}bit", bits));
+        group.throughput(Throughput::Bytes(partial_input_bytes as u64));
+        group.bench_function("pack", |b| {
             b.iter(|| {
                 ScalarBackend::pack_partial_block(
                     black_box(&partial),
@@ -80,8 +90,11 @@ fn benchmark_block_level(c: &mut Criterion) {
                 .expect("pack_partial_block failed");
             });
         });
+        group.finish();
 
-        c.bench_function(&format!("unpack_partial_block_64_{}bit", bits), |b| {
+        let mut group = c.benchmark_group(format!("unpack_partial_block_64_{}bit", bits));
+        group.throughput(Throughput::Bytes(n as u64));
+        group.bench_function("unpack", |b| {
             b.iter(|| {
                 ScalarBackend::unpack_partial_block(
                     black_box(&packed),
@@ -92,6 +105,7 @@ fn benchmark_block_level(c: &mut Criterion) {
                 .expect("unpack_partial_block failed");
             });
         });
+        group.finish();
     }
 }
 

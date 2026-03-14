@@ -135,6 +135,9 @@ pub(crate) fn decompress_into(
         // write_pos is block_idx * BLOCK_SIZE, and we process num_full_blocks where
         // num_full_blocks * BLOCK_SIZE <= total_count <= output.len().
         // Therefore write_pos + BLOCK_SIZE <= output.len(), making this cast safe.
+        // If this invariant were violated, we would write beyond the output buffer bounds,
+        // causing memory corruption.
+        debug_assert!(write_pos + BLOCK_SIZE <= output.len());
         unpack_block_dispatch(packed_data, bit_width, unsafe {
             &mut *(output.as_mut_ptr().add(write_pos) as *mut [u32; BLOCK_SIZE])
         })

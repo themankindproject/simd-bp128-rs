@@ -8,17 +8,20 @@ echo "========================================"
 
 cd fuzz
 
-echo ""
-echo "Running roundtrip fuzz test (60 seconds)..."
-timeout 60 cargo fuzz run roundtrip -- -max_total_time=60 || true
+# Configurable timeout (default 300 seconds = 5 minutes per target)
+FUZZ_TIMEOUT=${FUZZ_TIMEOUT:-300}
 
 echo ""
-echo "Running decompress_only fuzz test (60 seconds)..."
-timeout 60 cargo fuzz run decompress_only -- -max_total_time=60 || true
+echo "Running roundtrip fuzz test (${FUZZ_TIMEOUT} seconds)..."
+timeout $FUZZ_TIMEOUT cargo fuzz run roundtrip -- -max_total_time=$FUZZ_TIMEOUT || true
 
 echo ""
-echo "Running compress_only fuzz test (60 seconds)..."
-timeout 60 cargo fuzz run compress_only -- -max_total_time=60 || true
+echo "Running decompress_only fuzz test (${FUZZ_TIMEOUT} seconds)..."
+timeout $FUZZ_TIMEOUT cargo fuzz run decompress_only -- -max_total_time=$FUZZ_TIMEOUT || true
+
+echo ""
+echo "Running compress_only fuzz test (${FUZZ_TIMEOUT} seconds)..."
+timeout $FUZZ_TIMEOUT cargo fuzz run compress_only -- -max_total_time=$FUZZ_TIMEOUT || true
 
 echo ""
 echo "========================================"

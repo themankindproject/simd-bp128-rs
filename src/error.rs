@@ -79,7 +79,7 @@ impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Error::InvalidBitWidth(bw) => {
-                write!(f, "Invalid bit width: {} (must be 1-32)", bw)
+                write!(f, "Invalid bit width: {} (must be 0-32)", bw)
             }
             Error::InputTooShort { need, got } => {
                 write!(
@@ -108,7 +108,7 @@ impl std::fmt::Display for CompressionError {
                 write!(f, "Input too large: maximum {} values, got {}", max, got)
             }
             CompressionError::InvalidBitWidth { bit_width } => {
-                write!(f, "Invalid bit width: {} (must be 1-32)", bit_width)
+                write!(f, "Invalid bit width: {} (must be 0-32)", bit_width)
             }
             CompressionError::OutputTooSmall { need, got } => {
                 write!(
@@ -150,7 +150,7 @@ impl std::fmt::Display for DecompressionError {
                 )
             }
             DecompressionError::InvalidBitWidth { bit_width } => {
-                write!(f, "Invalid bit width: {} (must be 1-32)", bit_width)
+                write!(f, "Invalid bit width: {} (must be 0-32)", bit_width)
             }
             DecompressionError::BlockCountMismatch { expected, found } => {
                 write!(

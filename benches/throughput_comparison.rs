@@ -132,6 +132,7 @@ fn benchmark_full_compression(c: &mut Criterion) {
         ("10K", 10_000usize),
         ("100K", 100_000usize),
         ("1M", 1_000_000usize),
+        ("10M", 10_000_000usize),
     ];
 
     for bits in [8u32, 16, 32] {
@@ -147,7 +148,7 @@ fn benchmark_full_compression(c: &mut Criterion) {
 
             use simd_bp128::{compress, decompress};
             let compressed = compress(&data).expect("Compression failed");
-            let compressed_bytes = compressed.len() as u64;
+            let _compressed_bytes = compressed.len() as u64;
 
             group.throughput(Throughput::Bytes(input_bytes));
             group.bench_function(format!("compress_{}_{}bit", name, bits), |b| {
@@ -157,7 +158,7 @@ fn benchmark_full_compression(c: &mut Criterion) {
                 });
             });
 
-            group.throughput(Throughput::Bytes(compressed_bytes));
+            group.throughput(Throughput::Bytes(input_bytes));
             group.bench_function(format!("decompress_{}_{}bit", name, bits), |b| {
                 b.iter(|| {
                     let result = decompress(black_box(&compressed)).expect("Decompression failed");
@@ -170,5 +171,31 @@ fn benchmark_full_compression(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, benchmark_scalar_vs_sse, benchmark_full_compression);
+fn benchmark_baseline(c: &mut Criterion) {
+    let mut group = c.benchmark_group("baseline");
+    group.measurement_time(Duration::from_secs(5));
+
+    let sizes = [("1M", 1_000_000usize), ("10M", 10_000_000usize)];
+
+    for (name, size) in sizes {
+        let data = vec![0u8; size * 4];
+
+        group.throughput(Throughput::Bytes((size * 4) as u64));
+        group.bench_function(format!("memcpy_{}", name), |b| {
+            let mut dest = vec![0u8; size * 4];
+            b.iter(|| {
+                dest.copy_from_slice(&data);
+            });
+        });
+    }
+
+    group.finish();
+}
+
+criterion_group!(
+    benches,
+    benchmark_scalar_vs_sse,
+    benchmark_full_compression,
+    benchmark_baseline
+);
 criterion_main!(benches);

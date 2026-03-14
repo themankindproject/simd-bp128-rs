@@ -39,7 +39,7 @@ fn benchmark_throughput(c: &mut Criterion) {
         });
     });
 
-    group.throughput(Throughput::Bytes(compressed_bytes));
+    group.throughput(Throughput::Bytes(original_bytes));
     group.bench_function("decompress_1M_16bit", |b| {
         b.iter(|| {
             let result = decompress(black_box(&compressed)).expect("Decompression failed");

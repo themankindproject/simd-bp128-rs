@@ -10,12 +10,28 @@
 //! 1. **Byte-aligned widths (8, 16, 24, 32)**: Direct SIMD loads/stores with minimal shuffling
 //! 2. **Power-of-2 sub-byte (1, 2, 4)**: Parallel bit extraction using movemask and horizontal operations
 //! 3. **Non-byte-aligned (3, 5-7, 9-15, 17-23, 25-31)**: SIMD where profitable, scalar for complex cases
+//!
+//! # Safety
+//!
+//! All unsafe functions validate input/output buffer bounds before accessing memory.
+//! The SSE4.1 feature must be checked at runtime before calling these functions
+//! (handled automatically by the dispatch module).
 
 use crate::error::Error;
 use crate::simd::scalar::ScalarBackend;
 use crate::simd::SimdBackend;
 
+/// Number of values in a full block.
+const BLOCK_SIZE: usize = 128;
+
+/// Maximum valid bit width.
+const MAX_BIT_WIDTH: u8 = 32;
+
 /// SSE4.1 implementation of the BP128 bit-packing backend.
+///
+/// Provides SIMD-accelerated packing/unpacking for 128-value blocks.
+/// Automatically falls back to scalar implementation on non-x86_64 platforms.
+#[must_use]
 pub struct SseBackend;
 
 impl SimdBackend for SseBackend {
@@ -71,13 +87,23 @@ mod sse_impl {
     /// Pack a 128-value block using SSE4.1 instructions.
     ///
     /// Dispatches to specialized implementations based on bit width.
+    ///
+    /// # Safety
+    ///
+    /// This function uses SSE4.1 intrinsics that require the `sse4.1` CPU feature.
+    /// The caller must ensure this feature is available at runtime (handled by dispatch).
+    /// Input/output buffers must be properly sized:
+    /// - `input` must contain exactly 128 u32 values
+    /// - `output` must have at least `(128 * bit_width + 7) / 8` bytes
+    ///
+    /// Violating these invariants would cause undefined behavior via out-of-bounds memory access.
     #[target_feature(enable = "sse4.1")]
     pub unsafe fn pack_block_sse41(
         input: &[u32; 128],
         bit_width: u8,
         output: &mut [u8],
     ) -> Result<(), Error> {
-        if bit_width > 32 {
+        if bit_width > MAX_BIT_WIDTH {
             return Err(Error::InvalidBitWidth(bit_width));
         }
 
@@ -85,7 +111,7 @@ mod sse_impl {
             return Ok(());
         }
 
-        let required_bytes = (128 * bit_width as usize + 7) / 8;
+        let required_bytes = (BLOCK_SIZE * bit_width as usize + 7) / 8;
         if output.len() < required_bytes {
             return Err(Error::OutputTooSmall {
                 need: required_bytes,
@@ -102,21 +128,9 @@ mod sse_impl {
             6 => pack_accumulator_scalar(input, output, 6, 0x3F),
             7 => pack_accumulator_scalar(input, output, 7, 0x7F),
             8 => pack_8bit(input, output),
-            9 => pack_9to15bit(input, output, 9),
-            10 => pack_9to15bit(input, output, 10),
-            11 => pack_9to15bit(input, output, 11),
-            12 => pack_9to15bit(input, output, 12),
-            13 => pack_9to15bit(input, output, 13),
-            14 => pack_9to15bit(input, output, 14),
-            15 => pack_9to15bit(input, output, 15),
+            9..=15 => pack_9to23bit(input, output, bit_width),
             16 => pack_16bit(input, output),
-            17 => pack_17to23bit(input, output, 17),
-            18 => pack_17to23bit(input, output, 18),
-            19 => pack_17to23bit(input, output, 19),
-            20 => pack_17to23bit(input, output, 20),
-            21 => pack_17to23bit(input, output, 21),
-            22 => pack_17to23bit(input, output, 22),
-            23 => pack_17to23bit(input, output, 23),
+            17..=23 => pack_9to23bit(input, output, bit_width),
             24 => pack_24bit(input, output),
             25 => pack_accumulator_scalar(input, output, 25, 0x1FFFFFF),
             26 => pack_accumulator_scalar(input, output, 26, 0x3FFFFFF),
@@ -126,7 +140,7 @@ mod sse_impl {
             30 => pack_accumulator_scalar(input, output, 30, 0x3FFFFFFF),
             31 => pack_accumulator_scalar(input, output, 31, 0x7FFFFFFF),
             32 => pack_32bit(input, output),
-            _ => unreachable!(),
+            _ => unreachable!("bit_width validated above, must be 0-32"),
         }
     }
 
@@ -303,74 +317,12 @@ mod sse_impl {
         Ok(())
     }
 
-    /// Pack values with bit widths 9-15 using SIMD masking + scalar accumulator.
+    /// Pack values with bit widths 9-23 using SIMD masking + scalar accumulator.
+    ///
+    /// This consolidated function handles both 9-15 bit and 17-23 bit widths,
+    /// eliminating code duplication between the previous separate implementations.
     #[inline]
-    unsafe fn pack_9to15bit(input: &[u32; 128], output: &mut [u8], bits: u8) -> Result<(), Error> {
-        let mask = (1u32 << bits) - 1;
-        let mask_vec = _mm_set1_epi32(mask as i32);
-
-        let mut acc: u64 = 0;
-        let mut acc_bits: usize = 0;
-        let mut out_idx: usize = 0;
-
-        for i in 0..32 {
-            let in_ptr = input.as_ptr().add(i * 4);
-
-            let v = _mm_loadu_si128(in_ptr as *const __m128i);
-            let masked = _mm_and_si128(v, mask_vec);
-
-            let val0 = _mm_extract_epi32(masked, 0) as u32;
-            let val1 = _mm_extract_epi32(masked, 1) as u32;
-            let val2 = _mm_extract_epi32(masked, 2) as u32;
-            let val3 = _mm_extract_epi32(masked, 3) as u32;
-
-            acc |= (val0 as u64) << acc_bits;
-            acc_bits += bits as usize;
-            while acc_bits >= 8 {
-                output[out_idx] = acc as u8;
-                out_idx += 1;
-                acc >>= 8;
-                acc_bits -= 8;
-            }
-
-            acc |= (val1 as u64) << acc_bits;
-            acc_bits += bits as usize;
-            while acc_bits >= 8 {
-                output[out_idx] = acc as u8;
-                out_idx += 1;
-                acc >>= 8;
-                acc_bits -= 8;
-            }
-
-            acc |= (val2 as u64) << acc_bits;
-            acc_bits += bits as usize;
-            while acc_bits >= 8 {
-                output[out_idx] = acc as u8;
-                out_idx += 1;
-                acc >>= 8;
-                acc_bits -= 8;
-            }
-
-            acc |= (val3 as u64) << acc_bits;
-            acc_bits += bits as usize;
-            while acc_bits >= 8 {
-                output[out_idx] = acc as u8;
-                out_idx += 1;
-                acc >>= 8;
-                acc_bits -= 8;
-            }
-        }
-
-        if acc_bits > 0 {
-            output[out_idx] = acc as u8;
-        }
-
-        Ok(())
-    }
-
-    /// Pack values with bit widths 17-23 using SIMD masking + scalar accumulator.
-    #[inline]
-    unsafe fn pack_17to23bit(input: &[u32; 128], output: &mut [u8], bits: u8) -> Result<(), Error> {
+    unsafe fn pack_9to23bit(input: &[u32; 128], output: &mut [u8], bits: u8) -> Result<(), Error> {
         let mask = (1u32 << bits) - 1;
         let mask_vec = _mm_set1_epi32(mask as i32);
 
@@ -443,13 +395,23 @@ mod sse_impl {
     /// Unpack a 128-value block using SSE4.1 instructions.
     ///
     /// Dispatches to specialized implementations based on bit width.
+    ///
+    /// # Safety
+    ///
+    /// This function uses SSE4.1 intrinsics that require the `sse4.1` CPU feature.
+    /// The caller must ensure this feature is available at runtime (handled by dispatch).
+    /// Input/output buffers must be properly sized:
+    /// - `input` must have at least `(128 * bit_width + 7) / 8` bytes
+    /// - `output` must be able to hold exactly 128 u32 values
+    ///
+    /// Violating these invariants would cause undefined behavior via out-of-bounds memory access.
     #[target_feature(enable = "sse4.1")]
     pub unsafe fn unpack_block_sse41(
         input: &[u8],
         bit_width: u8,
         output: &mut [u32; 128],
     ) -> Result<(), Error> {
-        if bit_width > 32 {
+        if bit_width > MAX_BIT_WIDTH {
             return Err(Error::InvalidBitWidth(bit_width));
         }
 
@@ -458,7 +420,7 @@ mod sse_impl {
             return Ok(());
         }
 
-        let required_bytes = (128 * bit_width as usize + 7) / 8;
+        let required_bytes = (BLOCK_SIZE * bit_width as usize + 7) / 8;
         if input.len() < required_bytes {
             return Err(Error::InputTooShort {
                 need: required_bytes,
@@ -475,21 +437,9 @@ mod sse_impl {
             6 => unpack_accumulator_scalar(input, output, 6, 0x3F),
             7 => unpack_accumulator_scalar(input, output, 7, 0x7F),
             8 => unpack_8bit(input, output),
-            9 => unpack_9to15bit(input, output, 9),
-            10 => unpack_9to15bit(input, output, 10),
-            11 => unpack_9to15bit(input, output, 11),
-            12 => unpack_9to15bit(input, output, 12),
-            13 => unpack_9to15bit(input, output, 13),
-            14 => unpack_9to15bit(input, output, 14),
-            15 => unpack_9to15bit(input, output, 15),
+            9..=15 => unpack_9to23bit(input, output, bit_width),
             16 => unpack_16bit(input, output),
-            17 => unpack_17to23bit(input, output, 17),
-            18 => unpack_17to23bit(input, output, 18),
-            19 => unpack_17to23bit(input, output, 19),
-            20 => unpack_17to23bit(input, output, 20),
-            21 => unpack_17to23bit(input, output, 21),
-            22 => unpack_17to23bit(input, output, 22),
-            23 => unpack_17to23bit(input, output, 23),
+            17..=23 => unpack_9to23bit(input, output, bit_width),
             24 => unpack_24bit(input, output),
             25 => unpack_accumulator_scalar(input, output, 25, 0x1FFFFFF),
             26 => unpack_accumulator_scalar(input, output, 26, 0x3FFFFFF),
@@ -499,7 +449,7 @@ mod sse_impl {
             30 => unpack_accumulator_scalar(input, output, 30, 0x3FFFFFFF),
             31 => unpack_accumulator_scalar(input, output, 31, 0x7FFFFFFF),
             32 => unpack_32bit(input, output),
-            _ => unreachable!(),
+            _ => unreachable!("bit_width validated above, must be 0-32"),
         }
     }
 
@@ -663,52 +613,13 @@ mod sse_impl {
         Ok(())
     }
 
-    /// Unpack values with bit widths 9-15 using scalar accumulator + SIMD stores.
+    /// Unpack values with bit widths 9-23 using scalar accumulator + SIMD stores.
+    ///
+    /// This consolidated function handles both 9-15 bit and 17-23 bit widths,
+    /// eliminating code duplication between the previous separate implementations.
     #[inline]
     #[allow(clippy::needless_range_loop)] // Indexed loop with raw pointers is faster
-    unsafe fn unpack_9to15bit(
-        input: &[u8],
-        output: &mut [u32; 128],
-        bits: u8,
-    ) -> Result<(), Error> {
-        let mask = (1u64 << bits) - 1;
-
-        let mut acc: u64 = 0;
-        let mut acc_bits: usize = 0;
-        let mut in_idx: usize = 0;
-
-        for i in 0..32 {
-            let out_ptr = output.as_mut_ptr().add(i * 4);
-            let mut vals = [0u32; 4];
-
-            for j in 0..4 {
-                while acc_bits < bits as usize {
-                    acc |= (input[in_idx] as u64) << acc_bits;
-                    acc_bits += 8;
-                    in_idx += 1;
-                }
-
-                vals[j] = (acc & mask) as u32;
-                acc >>= bits;
-                acc_bits -= bits as usize;
-            }
-
-            let v = _mm_set_epi32(
-                vals[3] as i32,
-                vals[2] as i32,
-                vals[1] as i32,
-                vals[0] as i32,
-            );
-            _mm_storeu_si128(out_ptr as *mut __m128i, v);
-        }
-
-        Ok(())
-    }
-
-    /// Unpack values with bit widths 17-23 using scalar accumulator + SIMD stores.
-    #[inline]
-    #[allow(clippy::needless_range_loop)] // Indexed loop with raw pointers is faster
-    unsafe fn unpack_17to23bit(
+    unsafe fn unpack_9to23bit(
         input: &[u8],
         output: &mut [u32; 128],
         bits: u8,

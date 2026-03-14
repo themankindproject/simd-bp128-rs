@@ -10,6 +10,9 @@
 use crate::error::Error;
 use crate::simd::SimdBackend;
 
+/// Maximum valid bit width.
+const MAX_BIT_WIDTH: u8 = 32;
+
 /// Scalar (non-SIMD) implementation of the BP128 bit-packing backend.
 ///
 /// This implementation provides correct bit-packing operations without
@@ -34,6 +37,7 @@ use crate::simd::SimdBackend;
 /// - etc.
 ///
 /// When values cross byte boundaries, they are split appropriately.
+#[must_use]
 pub struct ScalarBackend;
 
 impl SimdBackend for ScalarBackend {
@@ -89,8 +93,9 @@ impl ScalarBackend {
 }
 
 /// Pack `num_values` integers using `bit_width` bits each.
+#[inline]
 fn pack_n(input: &[u32], bit_width: u8, output: &mut [u8]) -> Result<(), Error> {
-    if bit_width > 32 {
+    if bit_width > MAX_BIT_WIDTH {
         return Err(Error::InvalidBitWidth(bit_width));
     }
 
@@ -141,7 +146,7 @@ fn pack_n(input: &[u32], bit_width: u8, output: &mut [u8]) -> Result<(), Error> 
         30 => pack_30bit(input, output),
         31 => pack_31bit(input, output),
         32 => pack_32bit(input, output),
-        _ => unreachable!(),
+        _ => unreachable!("bit_width validated above, must be 0-32"),
     }
 }
 
@@ -352,13 +357,14 @@ define_pack_accumulator!(pack_30bit, 30, 0x3FFFFFFF);
 define_pack_accumulator!(pack_31bit, 31, 0x7FFFFFFF);
 
 /// Unpack `num_values` integers using `bit_width` bits each.
+#[inline]
 fn unpack_n(
     input: &[u8],
     bit_width: u8,
     num_values: usize,
     output: &mut [u32],
 ) -> Result<(), Error> {
-    if bit_width > 32 {
+    if bit_width > MAX_BIT_WIDTH {
         return Err(Error::InvalidBitWidth(bit_width));
     }
 
@@ -408,7 +414,7 @@ fn unpack_n(
         30 => unpack_30bit(input, num_values, output),
         31 => unpack_31bit(input, num_values, output),
         32 => unpack_32bit(input, num_values, output),
-        _ => unreachable!(),
+        _ => unreachable!("bit_width validated above, must be 0-32"),
     }
 }
 

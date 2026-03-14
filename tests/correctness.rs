@@ -43,7 +43,8 @@ proptest! {
     fn prop_small_values_small_compression(values in prop::collection::vec(0u32..256u32, 128..=128)) {
         let compressed = compress(&values).expect("Compression should succeed");
         // Format: 1 byte version + 8 byte header + 1 bit_width byte + packed data (128*8/8=128)
-        prop_assert_eq!(compressed.len(), 138); // 1 + 8 + 1 + 128
+        const EXPECTED_SIZE: usize = 1 + 8 + 1 + 128;
+        prop_assert_eq!(compressed.len(), EXPECTED_SIZE);
     }
 
     /// Property test: single value arrays
