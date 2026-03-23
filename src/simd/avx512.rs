@@ -1,6 +1,10 @@
 use crate::error::Error;
 use crate::simd::SimdBackend;
 
+/// Placeholder for AVX-512-accelerated BP128 bit-packing backend.
+///
+/// Currently falls back to SSE. When implemented, will use `_mm512` intrinsics
+/// for 4x throughput over SSE by processing 16 values per SIMD lane.
 #[allow(dead_code)]
 pub struct Avx512Backend;
 

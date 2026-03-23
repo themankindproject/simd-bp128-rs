@@ -8,6 +8,29 @@ const MAX_DECOMPRESSED_VALUES: usize = 1_000_000_000;
 const MAX_BLOCKS: usize = MAX_DECOMPRESSED_VALUES / 128 + 1;
 const HEADER_SIZE: usize = 9;
 
+/// Maps a generic `Error` to a `DecompressionError` with position context.
+fn map_error(e: Error, data_pos: usize, packed_size: usize) -> DecompressionError {
+    match e {
+        Error::InvalidBitWidth(bw) => DecompressionError::InvalidBitWidth { bit_width: bw },
+        Error::InputTooShort { need, got } => DecompressionError::TruncatedData {
+            position: data_pos,
+            needed: need,
+            have: got,
+        },
+        Error::OutputTooSmall { need, got } => DecompressionError::TruncatedData {
+            position: data_pos,
+            needed: need,
+            have: got,
+        },
+        Error::CompressionError(_) => DecompressionError::TruncatedData {
+            position: data_pos,
+            needed: packed_size,
+            have: 0,
+        },
+        Error::DecompressionError(inner) => inner,
+    }
+}
+
 /// Returns the number of decompressed values from the compressed input.
 ///
 /// This parses the header to extract the original input length.
@@ -83,10 +106,19 @@ pub(crate) fn max_decompressed_size(input: &[u8]) -> Result<usize, Decompression
 /// Returns an error if:
 /// - The input header is malformed
 /// - `output.len()` is less than the decompressed size
-pub(crate) fn decompress_into(
-    input: &[u8],
-    output: &mut [u32],
-) -> Result<usize, DecompressionError> {
+///
+/// # Example
+///
+/// ```
+/// use simd_bp128::{compress, decompress_into};
+///
+/// let data: Vec<u32> = (0..256).map(|i| i % 1000).collect();
+/// let compressed = compress(&data).unwrap();
+/// let mut output = vec![0u32; data.len()];
+/// let count = decompress_into(&compressed, &mut output).unwrap();
+/// assert_eq!(&data[..], &output[..count]);
+/// ```
+pub fn decompress_into(input: &[u8], output: &mut [u32]) -> Result<usize, DecompressionError> {
     let total_count = max_decompressed_size(input)?;
 
     if output.len() < total_count {
@@ -131,35 +163,16 @@ pub(crate) fn decompress_into(
 
         let packed_data = &input[data_pos..data_end];
 
-        // SAFETY: We know output has at least total_count elements from the check above.
-        // write_pos is block_idx * BLOCK_SIZE, and we process num_full_blocks where
-        // num_full_blocks * BLOCK_SIZE <= total_count <= output.len().
-        // Therefore write_pos + BLOCK_SIZE <= output.len(), making this cast safe.
-        // If this invariant were violated, we would write beyond the output buffer bounds,
-        // causing memory corruption.
-        debug_assert!(write_pos + BLOCK_SIZE <= output.len());
-        unpack_block_dispatch(packed_data, bit_width, unsafe {
-            &mut *(output.as_mut_ptr().add(write_pos) as *mut [u32; BLOCK_SIZE])
-        })
-        .map_err(|e| match e {
-            Error::InvalidBitWidth(bw) => DecompressionError::InvalidBitWidth { bit_width: bw },
-            Error::InputTooShort { need, got } => DecompressionError::TruncatedData {
-                position: data_pos,
-                needed: need,
-                have: got,
-            },
-            Error::OutputTooSmall { need, got } => DecompressionError::TruncatedData {
-                position: data_pos,
-                needed: need,
-                have: got,
-            },
-            Error::CompressionError(_) => DecompressionError::TruncatedData {
-                position: data_pos,
-                needed: packed_size,
-                have: 0,
-            },
-            Error::DecompressionError(inner) => inner,
-        })?;
+        // SAFETY: write_pos + BLOCK_SIZE <= output.len() is guaranteed by:
+        // - output.len() >= total_count (checked above)
+        // - write_pos = block_idx * BLOCK_SIZE where block_idx < num_full_blocks
+        // - num_full_blocks * BLOCK_SIZE <= total_count <= output.len()
+        let output_block: &mut [u32; BLOCK_SIZE] = (&mut output[write_pos..write_pos + BLOCK_SIZE])
+            .try_into()
+            .expect("output slice has exactly BLOCK_SIZE elements");
+
+        unpack_block_dispatch(packed_data, bit_width, output_block)
+            .map_err(|e| map_error(e, data_pos, packed_size))?;
 
         data_pos = data_end;
     }
@@ -196,25 +209,7 @@ pub(crate) fn decompress_into(
                 remaining,
                 &mut output[write_pos..write_pos + remaining],
             )
-            .map_err(|e| match e {
-                Error::InvalidBitWidth(bw) => DecompressionError::InvalidBitWidth { bit_width: bw },
-                Error::InputTooShort { need, got } => DecompressionError::TruncatedData {
-                    position: data_pos,
-                    needed: need,
-                    have: got,
-                },
-                Error::OutputTooSmall { need, got } => DecompressionError::TruncatedData {
-                    position: data_pos,
-                    needed: need,
-                    have: got,
-                },
-                Error::CompressionError(_) => DecompressionError::TruncatedData {
-                    position: data_pos,
-                    needed: packed_size,
-                    have: 0,
-                },
-                Error::DecompressionError(inner) => inner,
-            })?;
+            .map_err(|e| map_error(e, data_pos, packed_size))?;
         }
     }
 

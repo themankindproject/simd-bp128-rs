@@ -160,45 +160,26 @@ const fn packed_size_bytes(num_values: usize, bit_width: u8) -> usize {
     }
 }
 
-/// Pack 1-bit values using lookup table for optimal performance.
+/// Pack 1-bit values by extracting the LSB from each input value.
 ///
-/// # Safety
-/// Assumes output buffer has at least `(num_values + 7) / 8` bytes.
+/// Each group of 8 input values becomes one output byte, with value `i`'s
+/// bit occupying bit position `i` in the output byte.
 #[inline]
 fn pack_1bit(input: &[u32], output: &mut [u8]) -> Result<(), Error> {
     let num_values = input.len();
-
-    #[allow(clippy::identity_op)] // Intentional for bit position clarity
-    const LOOKUP: [u8; 256] = {
-        let mut table = [0u8; 256];
-        let mut i = 0u16;
-        while i < 256 {
-            let idx = i as usize;
-            table[idx] = ((idx >> 0) & 1) as u8
-                | (((idx >> 1) & 1) << 1) as u8
-                | (((idx >> 2) & 1) << 2) as u8
-                | (((idx >> 3) & 1) << 3) as u8
-                | (((idx >> 4) & 1) << 4) as u8
-                | (((idx >> 5) & 1) << 5) as u8
-                | (((idx >> 6) & 1) << 6) as u8
-                | (((idx >> 7) & 1) << 7) as u8;
-            i += 1;
-        }
-        table
-    };
-
     let full_chunks = num_values / 8;
-    #[allow(clippy::identity_op)] // Intentional for bit position clarity
+
     for i in 0..full_chunks {
-        let idx = ((input[i * 8] & 1) << 0)
-            | ((input[i * 8 + 1] & 1) << 1)
-            | ((input[i * 8 + 2] & 1) << 2)
-            | ((input[i * 8 + 3] & 1) << 3)
-            | ((input[i * 8 + 4] & 1) << 4)
-            | ((input[i * 8 + 5] & 1) << 5)
-            | ((input[i * 8 + 6] & 1) << 6)
-            | ((input[i * 8 + 7] & 1) << 7);
-        output[i] = LOOKUP[idx as usize];
+        let base = i * 8;
+        let byte = (input[base] & 1)
+            | ((input[base + 1] & 1) << 1)
+            | ((input[base + 2] & 1) << 2)
+            | ((input[base + 3] & 1) << 3)
+            | ((input[base + 4] & 1) << 4)
+            | ((input[base + 5] & 1) << 5)
+            | ((input[base + 6] & 1) << 6)
+            | ((input[base + 7] & 1) << 7);
+        output[i] = byte as u8;
     }
 
     let remainder_start = full_chunks * 8;
@@ -300,6 +281,7 @@ fn pack_4bit(input: &[u32], output: &mut [u8]) -> Result<(), Error> {
 #[inline]
 fn pack_8bit(input: &[u32], output: &mut [u8]) -> Result<(), Error> {
     for (i, &value) in input.iter().enumerate() {
+        // Mask is redundant for u32->u8 truncation but documents intent
         output[i] = value as u8;
     }
     Ok(())
@@ -308,9 +290,11 @@ fn pack_8bit(input: &[u32], output: &mut [u8]) -> Result<(), Error> {
 #[inline]
 fn pack_16bit(input: &[u32], output: &mut [u8]) -> Result<(), Error> {
     for (i, &value) in input.iter().enumerate() {
-        let bytes = value.to_le_bytes();
-        output[i * 2] = bytes[0];
-        output[i * 2 + 1] = bytes[1];
+        // Only store the lower 16 bits as little-endian bytes
+        let lo = value as u8;
+        let hi = (value >> 8) as u8;
+        output[i * 2] = lo;
+        output[i * 2 + 1] = hi;
     }
     Ok(())
 }
@@ -327,10 +311,13 @@ fn pack_24bit(input: &[u32], output: &mut [u8]) -> Result<(), Error> {
 
 #[inline]
 fn pack_32bit(input: &[u32], output: &mut [u8]) -> Result<(), Error> {
-    for (i, &value) in input.iter().enumerate() {
-        let bytes = value.to_le_bytes();
-        output[i * 4..i * 4 + 4].copy_from_slice(&bytes);
-    }
+    // Safety: output was validated to have at least packed_size_bytes(input.len(), 32)
+    // bytes, which equals input.len() * 4. The input pointer is valid for
+    // input.len() * 4 bytes since it comes from a &[u32]. Reinterpreting &[u32]
+    // as &[u8] with the same byte count is sound on little-endian targets.
+    let src: &[u8] =
+        unsafe { core::slice::from_raw_parts(input.as_ptr() as *const u8, input.len() * 4) };
+    output[..src.len()].copy_from_slice(src);
     Ok(())
 }
 
@@ -539,10 +526,14 @@ fn unpack_24bit(input: &[u8], num_values: usize, output: &mut [u32]) -> Result<(
 
 #[inline]
 fn unpack_32bit(input: &[u8], num_values: usize, output: &mut [u32]) -> Result<(), Error> {
-    for (i, out) in output.iter_mut().take(num_values).enumerate() {
-        let bytes = &input[i * 4..i * 4 + 4];
-        *out = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
-    }
+    // Safety: input was validated to have at least packed_size_bytes(num_values, 32)
+    // bytes, which equals num_values * 4. The output pointer is valid for
+    // num_values * 4 bytes since it comes from a &mut [u32] of sufficient length.
+    // Reinterpreting &mut [u32] as &mut [u8] with the same byte count is sound
+    // on little-endian targets.
+    let dst: &mut [u8] =
+        unsafe { core::slice::from_raw_parts_mut(output.as_mut_ptr() as *mut u8, num_values * 4) };
+    dst.copy_from_slice(&input[..num_values * 4]);
     Ok(())
 }
 

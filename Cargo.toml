@@ -9,6 +9,7 @@ repository = "https://github.com/themankindproject/simd-bp128"
 keywords = ["simd", "compression", "bitpacking", "performance"]
 categories = ["compression", "algorithms"]
 rust-version = "1.70"
+readme = "README.md"
 
 [dependencies]
 
@@ -27,10 +28,6 @@ harness = false
 
 [[bench]]
 name = "mixed_data"
-harness = false
-
-[[bench]]
-name = "throughput"
 harness = false
 
 [[bench]]

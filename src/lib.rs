@@ -3,6 +3,30 @@
 //! Provides compression and decompression of `u32` arrays using the BP128
 //! variable-bit-width algorithm, with SIMD acceleration support.
 //!
+//! # Quick Start
+//!
+//! ```
+//! use simd_bp128::{compress, decompress};
+//!
+//! let data: Vec<u32> = (0..256).map(|i| i % 1000).collect();
+//! let compressed = compress(&data).unwrap();
+//! let decompressed = decompress(&compressed).unwrap();
+//! assert_eq!(data, decompressed);
+//! ```
+//!
+//! # Pre-allocating Buffers
+//!
+//! For zero-allocation hot paths, use [`max_compressed_size`] and [`compress_into`]:
+//!
+//! ```
+//! use simd_bp128::{compress_into, max_compressed_size};
+//!
+//! let data: Vec<u32> = (0..256).map(|i| i % 1000).collect();
+//! let mut buffer = vec![0u8; max_compressed_size(data.len())];
+//! let bytes_written = compress_into(&data, &mut buffer).unwrap();
+//! buffer.truncate(bytes_written);
+//! ```
+//!
 //! # Binary Format
 //!
 //! The compressed format is designed for fast random access and is
@@ -34,9 +58,16 @@
 //! - **Decompression**: O(n) time complexity
 //! - **SIMD Support**: Automatic detection and use of SSE4.1, AVX2, or AVX512
 //! - **Throughput**: Typically 3-10 GB/s depending on bit width and CPU
+//!
+//! # Safety
+//!
+//! This crate uses `unsafe` code in performance-critical SIMD kernels and
+//! for zero-copy reinterpretation of u32 slices as byte slices. All unsafe
+//! blocks are documented with safety invariants and are covered by extensive
+//! property-based testing (proptest) and fuzz testing.
 
-pub use compress::compress;
-pub use decompress::decompress;
+pub use compress::{compress, compress_into, max_compressed_size};
+pub use decompress::{decompress, decompress_into};
 pub use error::{CompressionError, DecompressionError, Error};
 
 pub(crate) mod bitwidth;

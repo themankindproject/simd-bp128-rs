@@ -8,7 +8,19 @@ use crate::{BLOCK_SIZE, FORMAT_VERSION};
 ///
 /// This is the worst-case size assuming all blocks use 32-bit width.
 /// The actual compressed size will be equal to or less than this value.
-pub(crate) fn max_compressed_size(input_len: usize) -> usize {
+/// Use this to pre-allocate output buffers for [`compress`] or [`compress_into`].
+///
+/// # Example
+///
+/// ```
+/// use simd_bp128::max_compressed_size;
+///
+/// let max_size = max_compressed_size(1024);
+/// let mut buffer = vec![0u8; max_size];
+/// // Now use buffer with compress_into
+/// ```
+#[inline]
+pub fn max_compressed_size(input_len: usize) -> usize {
     if input_len == 0 {
         return 0;
     }
@@ -21,13 +33,25 @@ pub(crate) fn max_compressed_size(input_len: usize) -> usize {
 /// Compresses `input` into the provided `output` buffer.
 ///
 /// Returns the number of bytes written on success.
+/// Use [`max_compressed_size`] to determine the minimum buffer size.
 ///
 /// # Errors
 ///
 /// Returns an error if:
 /// - `input.len() > u32::MAX`
 /// - `output.len() < max_compressed_size(input.len())`
-pub(crate) fn compress_into(input: &[u32], output: &mut [u8]) -> Result<usize, Error> {
+///
+/// # Example
+///
+/// ```
+/// use simd_bp128::{compress_into, max_compressed_size};
+///
+/// let data: Vec<u32> = (0..256).map(|i| i % 1000).collect();
+/// let mut buffer = vec![0u8; max_compressed_size(data.len())];
+/// let bytes_written = compress_into(&data, &mut buffer).unwrap();
+/// buffer.truncate(bytes_written);
+/// ```
+pub fn compress_into(input: &[u32], output: &mut [u8]) -> Result<usize, Error> {
     if input.is_empty() {
         return Ok(0);
     }
@@ -67,15 +91,11 @@ pub(crate) fn compress_into(input: &[u32], output: &mut [u8]) -> Result<usize, E
 
     for block_idx in 0..num_full_blocks {
         let start: usize = block_idx * BLOCK_SIZE;
-        let block: &[u32] = &input[start..start + BLOCK_SIZE];
+        let block: &[u32; BLOCK_SIZE] = input[start..start + BLOCK_SIZE]
+            .try_into()
+            .expect("block slice length is exactly BLOCK_SIZE");
 
-        let acc = {
-            let mut acc = 0u32;
-            for &v in block {
-                acc |= v;
-            }
-            acc
-        };
+        let acc = block.iter().fold(0u32, |acc, &v| acc | v);
         let bit_width = required_bit_width(acc);
 
         output[bit_widths_offset + block_idx] = bit_width;
@@ -85,17 +105,7 @@ pub(crate) fn compress_into(input: &[u32], output: &mut [u8]) -> Result<usize, E
             continue;
         }
 
-        // SAFETY: We know block has exactly BLOCK_SIZE (128) elements because
-        // we sliced input[block_idx * BLOCK_SIZE..(block_idx+1) * BLOCK_SIZE].
-        // Casting &[u32] to &[u32; 128] is safe when the length is exactly 128.
-        // If this invariant were violated, we would read uninitialized memory
-        // or access memory beyond the slice bounds.
-        debug_assert_eq!(block.len(), BLOCK_SIZE);
-        pack_block_dispatch(
-            unsafe { &*(block.as_ptr() as *const [u32; BLOCK_SIZE]) },
-            bit_width,
-            &mut output[offset..],
-        )?;
+        pack_block_dispatch(block, bit_width, &mut output[offset..])?;
         offset += packed_size;
     }
 
@@ -103,13 +113,7 @@ pub(crate) fn compress_into(input: &[u32], output: &mut [u8]) -> Result<usize, E
         let start: usize = num_full_blocks * BLOCK_SIZE;
         let block: &[u32] = &input[start..];
 
-        let acc = {
-            let mut acc = 0u32;
-            for &v in block {
-                acc |= v;
-            }
-            acc
-        };
+        let acc = block.iter().fold(0u32, |acc, &v| acc | v);
         let bit_width: u8 = required_bit_width(acc);
 
         output[bit_widths_offset + num_full_blocks] = bit_width;

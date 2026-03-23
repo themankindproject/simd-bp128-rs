@@ -40,6 +40,10 @@ pub(crate) fn get_backend() -> BackendType {
     *BACKEND.get_or_init(detect_best_backend)
 }
 
+/// Dispatches pack_block to the best available backend.
+///
+/// Currently Avx2 and Avx512 fall through to SSE (which has a working
+/// implementation). When those backends are implemented, add explicit arms.
 #[inline(always)]
 pub(crate) fn pack_block_dispatch(
     input: &[u32; 128],
@@ -49,10 +53,13 @@ pub(crate) fn pack_block_dispatch(
     match get_backend() {
         BackendType::Scalar => ScalarBackend::pack_block(input, bit_width, output),
         #[cfg(target_arch = "x86_64")]
-        _ => SseBackend::pack_block(input, bit_width, output),
+        BackendType::Sse | BackendType::Avx2 | BackendType::Avx512 => {
+            SseBackend::pack_block(input, bit_width, output)
+        }
     }
 }
 
+/// Dispatches unpack_block to the best available backend.
 #[inline(always)]
 pub(crate) fn unpack_block_dispatch(
     input: &[u8],
@@ -62,7 +69,9 @@ pub(crate) fn unpack_block_dispatch(
     match get_backend() {
         BackendType::Scalar => ScalarBackend::unpack_block(input, bit_width, output),
         #[cfg(target_arch = "x86_64")]
-        _ => SseBackend::unpack_block(input, bit_width, output),
+        BackendType::Sse | BackendType::Avx2 | BackendType::Avx512 => {
+            SseBackend::unpack_block(input, bit_width, output)
+        }
     }
 }
 
