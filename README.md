@@ -20,7 +20,7 @@ simd-bp128-rs is a Rust library that implements the BP128 (Bit Packing 128) comp
 
 ## Quickstart
 
-**Prerequisites**: Rust 1.76+ (`rustup toolchain install stable`)
+**Prerequisites**: Rust 1.70+ (`rustup toolchain install stable`)
 
 ```bash
 # Build & test
@@ -58,8 +58,8 @@ See [`examples/`](examples/) for more demonstrations.
 The library uses a trait-based backend system internally:
 
 - `SimdBackend`: Core trait for packing/unpacking blocks
-- `ScalarBackend`: Reference implementation  
-- `SseBackend`, `Avx2Backend`, `Avx512Backend`: SIMD-accelerated implementations
+- `ScalarBackend`: Reference implementation
+- `SseBackend`: SSE4.1-accelerated implementation
 
 ## Format Specification
 

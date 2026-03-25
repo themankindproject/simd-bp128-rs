@@ -56,7 +56,7 @@
 //!
 //! - **Compression**: O(n) time complexity where n = input.len()
 //! - **Decompression**: O(n) time complexity
-//! - **SIMD Support**: Automatic detection and use of SSE4.1, AVX2, or AVX512
+//! - **SIMD Support**: Automatic detection and use of SSE4.1 on x86_64, with scalar fallback
 //! - **Throughput**: Typically 3-10 GB/s depending on bit width and CPU
 //!
 //! # Safety
