@@ -5,6 +5,12 @@ use crate::simd::SimdBackend;
 #[cfg(target_arch = "x86_64")]
 use crate::simd::sse::SseBackend;
 
+/// Function pointer type for packing a 128-value block.
+pub(crate) type PackFn = fn(&[u32; 128], u8, &mut [u8]) -> Result<(), Error>;
+
+/// Function pointer type for unpacking a 128-value block.
+pub(crate) type UnpackFn = fn(&[u8], u8, &mut [u32; 128]) -> Result<(), Error>;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum BackendType {
     Scalar,
@@ -40,38 +46,26 @@ pub(crate) fn get_backend() -> BackendType {
     *BACKEND.get_or_init(detect_best_backend)
 }
 
-/// Dispatches pack_block to the best available backend.
+/// Returns the pack function pointer for the best available backend.
 ///
-/// Currently Avx2 and Avx512 fall through to SSE (which has a working
-/// implementation). When those backends are implemented, add explicit arms.
+/// Resolves the backend once so callers can use the pointer in a tight loop
+/// without repeated atomic loads from `OnceLock`.
 #[inline(always)]
-pub(crate) fn pack_block_dispatch(
-    input: &[u32; 128],
-    bit_width: u8,
-    output: &mut [u8],
-) -> Result<(), Error> {
+pub(crate) fn get_pack_fn() -> PackFn {
     match get_backend() {
-        BackendType::Scalar => ScalarBackend::pack_block(input, bit_width, output),
+        BackendType::Scalar => ScalarBackend::pack_block,
         #[cfg(target_arch = "x86_64")]
-        BackendType::Sse | BackendType::Avx2 | BackendType::Avx512 => {
-            SseBackend::pack_block(input, bit_width, output)
-        }
+        BackendType::Sse | BackendType::Avx2 | BackendType::Avx512 => SseBackend::pack_block,
     }
 }
 
-/// Dispatches unpack_block to the best available backend.
+/// Returns the unpack function pointer for the best available backend.
 #[inline(always)]
-pub(crate) fn unpack_block_dispatch(
-    input: &[u8],
-    bit_width: u8,
-    output: &mut [u32; 128],
-) -> Result<(), Error> {
+pub(crate) fn get_unpack_fn() -> UnpackFn {
     match get_backend() {
-        BackendType::Scalar => ScalarBackend::unpack_block(input, bit_width, output),
+        BackendType::Scalar => ScalarBackend::unpack_block,
         #[cfg(target_arch = "x86_64")]
-        BackendType::Sse | BackendType::Avx2 | BackendType::Avx512 => {
-            SseBackend::unpack_block(input, bit_width, output)
-        }
+        BackendType::Sse | BackendType::Avx2 | BackendType::Avx512 => SseBackend::unpack_block,
     }
 }
 

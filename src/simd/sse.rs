@@ -122,23 +122,16 @@ mod sse_impl {
         match bit_width {
             1 => pack_1bit(input, output),
             2 => pack_2bit(input, output),
-            3 => pack_accumulator_scalar(input, output, 3, 0x7),
+            // 3,5,6,7: scalar accumulator is identical to ScalarBackend
+            3 | 5 | 6 | 7 => ScalarBackend::pack_block(input, bit_width, output),
             4 => pack_4bit(input, output),
-            5 => pack_accumulator_scalar(input, output, 5, 0x1F),
-            6 => pack_accumulator_scalar(input, output, 6, 0x3F),
-            7 => pack_accumulator_scalar(input, output, 7, 0x7F),
             8 => pack_8bit(input, output),
             9..=15 => pack_9to23bit(input, output, bit_width),
             16 => pack_16bit(input, output),
             17..=23 => pack_9to23bit(input, output, bit_width),
             24 => pack_24bit(input, output),
-            25 => pack_accumulator_scalar(input, output, 25, 0x1FFFFFF),
-            26 => pack_accumulator_scalar(input, output, 26, 0x3FFFFFF),
-            27 => pack_accumulator_scalar(input, output, 27, 0x7FFFFFF),
-            28 => pack_accumulator_scalar(input, output, 28, 0xFFFFFFF),
-            29 => pack_accumulator_scalar(input, output, 29, 0x1FFFFFFF),
-            30 => pack_accumulator_scalar(input, output, 30, 0x3FFFFFFF),
-            31 => pack_accumulator_scalar(input, output, 31, 0x7FFFFFFF),
+            // 25-31: scalar accumulator is identical to ScalarBackend
+            25..=31 => ScalarBackend::pack_block(input, bit_width, output),
             32 => pack_32bit(input, output),
             _ => unreachable!("bit_width validated above, must be 0-32"),
         }
@@ -360,38 +353,6 @@ mod sse_impl {
         Ok(())
     }
 
-    /// Generic scalar accumulator pack for non-byte-aligned widths.
-    #[inline]
-    #[allow(clippy::needless_range_loop)] // Indexed loop is faster than iterator here
-    unsafe fn pack_accumulator_scalar(
-        input: &[u32; 128],
-        output: &mut [u8],
-        bits: usize,
-        mask: u64,
-    ) -> Result<(), Error> {
-        let mut acc: u64 = 0;
-        let mut acc_bits: usize = 0;
-        let mut out_idx: usize = 0;
-
-        for i in 0..128 {
-            acc |= ((input[i] as u64) & mask) << acc_bits;
-            acc_bits += bits;
-
-            while acc_bits >= 8 {
-                output[out_idx] = acc as u8;
-                out_idx += 1;
-                acc >>= 8;
-                acc_bits -= 8;
-            }
-        }
-
-        if acc_bits > 0 {
-            output[out_idx] = acc as u8;
-        }
-
-        Ok(())
-    }
-
     /// Unpack a 128-value block using SSE4.1 instructions.
     ///
     /// Dispatches to specialized implementations based on bit width.
@@ -431,23 +392,16 @@ mod sse_impl {
         match bit_width {
             1 => unpack_1bit(input, output),
             2 => unpack_2bit(input, output),
-            3 => unpack_accumulator_scalar(input, output, 3, 0x7),
+            // 3,5,6,7: scalar accumulator matches ScalarBackend
+            3 | 5 | 6 | 7 => ScalarBackend::unpack_block(input, bit_width, output),
             4 => unpack_4bit(input, output),
-            5 => unpack_accumulator_scalar(input, output, 5, 0x1F),
-            6 => unpack_accumulator_scalar(input, output, 6, 0x3F),
-            7 => unpack_accumulator_scalar(input, output, 7, 0x7F),
             8 => unpack_8bit(input, output),
             9..=15 => unpack_9to23bit(input, output, bit_width),
             16 => unpack_16bit(input, output),
             17..=23 => unpack_9to23bit(input, output, bit_width),
             24 => unpack_24bit(input, output),
-            25 => unpack_accumulator_scalar(input, output, 25, 0x1FFFFFF),
-            26 => unpack_accumulator_scalar(input, output, 26, 0x3FFFFFF),
-            27 => unpack_accumulator_scalar(input, output, 27, 0x7FFFFFF),
-            28 => unpack_accumulator_scalar(input, output, 28, 0xFFFFFFF),
-            29 => unpack_accumulator_scalar(input, output, 29, 0x1FFFFFFF),
-            30 => unpack_accumulator_scalar(input, output, 30, 0x3FFFFFFF),
-            31 => unpack_accumulator_scalar(input, output, 31, 0x7FFFFFFF),
+            // 25-31: scalar accumulator matches ScalarBackend
+            25..=31 => ScalarBackend::unpack_block(input, bit_width, output),
             32 => unpack_32bit(input, output),
             _ => unreachable!("bit_width validated above, must be 0-32"),
         }
@@ -537,6 +491,10 @@ mod sse_impl {
     }
 
     /// Unpack 1-bit packed values using scalar bit extraction.
+    ///
+    /// NOTE: Scalar — SIMD patterns for 1-bit are slower due to the cost of
+    /// expanding 16 bytes into 128 individual u32 values. This is already
+    /// near-optimal at ~100 ns/block.
     #[inline]
     unsafe fn unpack_1bit(input: &[u8], output: &mut [u32; 128]) -> Result<(), Error> {
         for i in 0..4 {
@@ -562,6 +520,8 @@ mod sse_impl {
     }
 
     /// Unpack 2-bit packed values using scalar extraction.
+    ///
+    /// NOTE: Scalar — the byte-by-byte nibble extraction is already efficient.
     #[inline]
     unsafe fn unpack_2bit(input: &[u8], output: &mut [u32; 128]) -> Result<(), Error> {
         for i in 0..8 {
@@ -644,47 +604,6 @@ mod sse_impl {
                 vals[j] = (acc & mask) as u32;
                 acc >>= bits;
                 acc_bits -= bits as usize;
-            }
-
-            let v = _mm_set_epi32(
-                vals[3] as i32,
-                vals[2] as i32,
-                vals[1] as i32,
-                vals[0] as i32,
-            );
-            _mm_storeu_si128(out_ptr as *mut __m128i, v);
-        }
-
-        Ok(())
-    }
-
-    /// Generic scalar accumulator unpack with SIMD stores.
-    #[inline]
-    #[allow(clippy::needless_range_loop)] // Indexed loop with raw pointers is faster
-    unsafe fn unpack_accumulator_scalar(
-        input: &[u8],
-        output: &mut [u32; 128],
-        bits: usize,
-        mask: u64,
-    ) -> Result<(), Error> {
-        let mut acc: u64 = 0;
-        let mut acc_bits: usize = 0;
-        let mut in_idx: usize = 0;
-
-        for i in 0..32 {
-            let out_ptr = output.as_mut_ptr().add(i * 4);
-            let mut vals = [0u32; 4];
-
-            for j in 0..4 {
-                while acc_bits < bits {
-                    acc |= (input[in_idx] as u64) << acc_bits;
-                    acc_bits += 8;
-                    in_idx += 1;
-                }
-
-                vals[j] = (acc & mask) as u32;
-                acc >>= bits;
-                acc_bits -= bits;
             }
 
             let v = _mm_set_epi32(

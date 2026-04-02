@@ -1,5 +1,5 @@
 use crate::bitwidth::{packed_block_size, packed_partial_block_size};
-use crate::dispatch::unpack_block_dispatch;
+use crate::dispatch::{get_unpack_fn, UnpackFn};
 use crate::error::{DecompressionError, Error};
 use crate::simd::scalar::ScalarBackend;
 use crate::{BLOCK_SIZE, FORMAT_VERSION};
@@ -168,6 +168,9 @@ pub fn decompress_into(input: &[u8], output: &mut [u32]) -> Result<usize, Decomp
     let num_full_blocks = total_count / BLOCK_SIZE;
     let remaining = total_count % BLOCK_SIZE;
 
+    // Resolve backend once to avoid per-block atomic loads from OnceLock.
+    let unpack: UnpackFn = get_unpack_fn();
+
     for (block_idx, &bit_width) in bit_widths.iter().enumerate().take(num_full_blocks) {
         let write_pos = block_idx * BLOCK_SIZE;
 
@@ -203,7 +206,7 @@ pub fn decompress_into(input: &[u8], output: &mut [u32]) -> Result<usize, Decomp
             .try_into()
             .expect("output slice has exactly BLOCK_SIZE elements");
 
-        unpack_block_dispatch(packed_data, bit_width, output_block)
+        unpack(packed_data, bit_width, output_block)
             .map_err(|e| map_error(e, data_pos, packed_size))?;
 
         data_pos = data_end;

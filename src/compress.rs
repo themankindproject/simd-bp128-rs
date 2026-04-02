@@ -1,5 +1,5 @@
 use crate::bitwidth::{packed_block_size, packed_partial_block_size, required_bit_width};
-use crate::dispatch::pack_block_dispatch;
+use crate::dispatch::{get_pack_fn, PackFn};
 use crate::error::{CompressionError, Error};
 use crate::simd::scalar::ScalarBackend;
 use crate::{BLOCK_SIZE, FORMAT_VERSION};
@@ -99,6 +99,9 @@ pub fn compress_into(input: &[u32], output: &mut [u8]) -> Result<usize, Error> {
     let bit_widths_offset: usize = offset;
     offset += num_blocks;
 
+    // Resolve backend once to avoid per-block atomic loads from OnceLock.
+    let pack: PackFn = get_pack_fn();
+
     for block_idx in 0..num_full_blocks {
         let start: usize = block_idx * BLOCK_SIZE;
         let block: &[u32; BLOCK_SIZE] = input[start..start + BLOCK_SIZE]
@@ -115,7 +118,7 @@ pub fn compress_into(input: &[u32], output: &mut [u8]) -> Result<usize, Error> {
             continue;
         }
 
-        pack_block_dispatch(block, bit_width, &mut output[offset..])?;
+        pack(block, bit_width, &mut output[offset..])?;
         offset += packed_size;
     }
 
