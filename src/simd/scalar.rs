@@ -311,10 +311,12 @@ fn pack_24bit(input: &[u32], output: &mut [u8]) -> Result<(), Error> {
 
 #[inline]
 fn pack_32bit(input: &[u32], output: &mut [u8]) -> Result<(), Error> {
-    // Safety: output was validated to have at least packed_size_bytes(input.len(), 32)
-    // bytes, which equals input.len() * 4. The input pointer is valid for
-    // input.len() * 4 bytes since it comes from a &[u32]. Reinterpreting &[u32]
-    // as &[u8] with the same byte count is sound on little-endian targets.
+    // SAFETY: `input.as_ptr()` is valid for `input.len() * 4` bytes because it
+    // originates from a `&[u32]`.  The output buffer was validated by `pack_n`
+    // to have at least `packed_size_bytes(input.len(), 32) == input.len() * 4`
+    // bytes.  Reinterpreting `&[u32]` as `&[u8]` with the same element count is
+    // sound on little-endian targets (enforced at compile time via
+    // `compile_error!` in `lib.rs`).
     let src: &[u8] =
         unsafe { core::slice::from_raw_parts(input.as_ptr() as *const u8, input.len() * 4) };
     output[..src.len()].copy_from_slice(src);
@@ -526,11 +528,13 @@ fn unpack_24bit(input: &[u8], num_values: usize, output: &mut [u32]) -> Result<(
 
 #[inline]
 fn unpack_32bit(input: &[u8], num_values: usize, output: &mut [u32]) -> Result<(), Error> {
-    // Safety: input was validated to have at least packed_size_bytes(num_values, 32)
-    // bytes, which equals num_values * 4. The output pointer is valid for
-    // num_values * 4 bytes since it comes from a &mut [u32] of sufficient length.
-    // Reinterpreting &mut [u32] as &mut [u8] with the same byte count is sound
-    // on little-endian targets.
+    // SAFETY: `output.as_mut_ptr()` is valid for `num_values * 4` bytes because
+    // it comes from a `&mut [u32]` of at least `num_values` elements (guaranteed
+    // by `unpack_n`).  The input buffer was validated to have at least
+    // `packed_size_bytes(num_values, 32) == num_values * 4` bytes.
+    // Reinterpreting `&mut [u32]` as `&mut [u8]` with the same element count is
+    // sound on little-endian targets (enforced at compile time via
+    // `compile_error!` in `lib.rs`).
     let dst: &mut [u8] =
         unsafe { core::slice::from_raw_parts_mut(output.as_mut_ptr() as *mut u8, num_values * 4) };
     dst.copy_from_slice(&input[..num_values * 4]);

@@ -16,7 +16,8 @@
 //!
 //! # Pre-allocating Buffers
 //!
-//! For zero-allocation hot paths, use [`max_compressed_size`] and [`compress_into`]:
+//! For zero-allocation hot paths, use [`max_compressed_size`] / [`decompressed_len`]
+//! with [`compress_into`] / [`decompress_into`]:
 //!
 //! ```
 //! use simd_bp128::{compress_into, max_compressed_size};
@@ -25,6 +26,16 @@
 //! let mut buffer = vec![0u8; max_compressed_size(data.len())];
 //! let bytes_written = compress_into(&data, &mut buffer).unwrap();
 //! buffer.truncate(bytes_written);
+//! ```
+//!
+//! ```
+//! use simd_bp128::{compress, decompressed_len, decompress_into};
+//!
+//! let data: Vec<u32> = (0..256).map(|i| i % 1000).collect();
+//! let compressed = compress(&data).unwrap();
+//! let len = decompressed_len(&compressed).unwrap();
+//! let mut output = vec![0u32; len];
+//! decompress_into(&compressed, &mut output).unwrap();
 //! ```
 //!
 //! # Binary Format
@@ -66,8 +77,14 @@
 //! blocks are documented with safety invariants and are covered by extensive
 //! property-based testing (proptest) and fuzz testing.
 
+#[cfg(target_endian = "big")]
+compile_error!(
+    "simd-bp128 requires a little-endian target. \
+     The bit-packing format and zero-copy u32↔u8 reinternals assume little-endian byte order."
+);
+
 pub use compress::{compress, compress_into, max_compressed_size};
-pub use decompress::{decompress, decompress_into};
+pub use decompress::{decompress, decompress_into, decompressed_len};
 pub use error::{CompressionError, DecompressionError, Error};
 
 pub(crate) mod bitwidth;
@@ -77,7 +94,10 @@ pub(crate) mod dispatch;
 pub(crate) mod error;
 pub(crate) mod simd;
 
+/// Number of u32 values in each compressed block.
 pub(crate) const BLOCK_SIZE: usize = 128;
+
+/// Binary format version written to every compressed header.
 pub(crate) const FORMAT_VERSION: u8 = 1;
 
 /// Internal types exposed for benchmarks and integration tests.

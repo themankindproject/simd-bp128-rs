@@ -16,9 +16,11 @@
 ///         Error::OutputTooSmall { .. } => "Output buffer too small",
 ///         Error::CompressionError(_) => "Compression failed",
 ///         Error::DecompressionError(_) => "Decompression failed",
+///         _ => "Unknown error",
 ///     }
 /// }
 /// ```
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Error {
     /// The specified bit width is invalid (must be 0-32).
@@ -37,22 +39,20 @@ pub enum Error {
 ///
 /// These errors indicate problems with the input data or output buffer
 /// during the compression process.
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CompressionError {
     /// The input array exceeds the maximum supported size.
     InputTooLarge { max: usize, got: usize },
-    /// The specified bit width is invalid (must be 0-32).
-    InvalidBitWidth { bit_width: u8 },
     /// The output buffer is too small to hold the compressed data.
     OutputTooSmall { need: usize, got: usize },
-    /// The input block size does not match the expected size.
-    BlockSizeMismatch { expected: usize, got: usize },
 }
 
 /// Errors that can occur during decompression operations.
 ///
 /// These errors indicate problems with the compressed data format or
 /// insufficient output buffer space during decompression.
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DecompressionError {
     /// The compressed data header is incomplete.
@@ -107,21 +107,11 @@ impl std::fmt::Display for CompressionError {
             CompressionError::InputTooLarge { max, got } => {
                 write!(f, "Input too large: maximum {} values, got {}", max, got)
             }
-            CompressionError::InvalidBitWidth { bit_width } => {
-                write!(f, "Invalid bit width: {} (must be 0-32)", bit_width)
-            }
             CompressionError::OutputTooSmall { need, got } => {
                 write!(
                     f,
                     "Output buffer too small: need {} bytes, got {}",
                     need, got
-                )
-            }
-            CompressionError::BlockSizeMismatch { expected, got } => {
-                write!(
-                    f,
-                    "Block size mismatch: expected {} values, got {}",
-                    expected, got
                 )
             }
         }
@@ -176,7 +166,15 @@ impl std::fmt::Display for DecompressionError {
     }
 }
 
-impl std::error::Error for Error {}
+impl std::error::Error for Error {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Error::CompressionError(e) => Some(e),
+            Error::DecompressionError(e) => Some(e),
+            _ => None,
+        }
+    }
+}
 impl std::error::Error for CompressionError {}
 impl std::error::Error for DecompressionError {}
 

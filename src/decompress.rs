@@ -31,11 +31,37 @@ fn map_error(e: Error, data_pos: usize, packed_size: usize) -> DecompressionErro
     }
 }
 
-/// Returns the number of decompressed values from the compressed input.
+/// Returns the number of `u32` values in compressed data without decompressing.
 ///
-/// This parses the header to extract the original input length.
-/// Returns an error if the input is malformed.
-pub(crate) fn max_decompressed_size(input: &[u8]) -> Result<usize, DecompressionError> {
+/// Parses the header to extract the original input length. Useful for
+/// pre-allocating output buffers for [`decompress_into`].
+///
+/// Returns `Ok(0)` for empty input.
+///
+/// # Errors
+///
+/// Returns [`DecompressionError`] if the header is malformed:
+/// - [`DecompressionError::HeaderTooSmall`] — Input shorter than 9 bytes
+/// - [`DecompressionError::UnsupportedVersion`] — Version byte not equal to 1
+/// - [`DecompressionError::InvalidBitWidth`] — Bit width byte > 32
+/// - [`DecompressionError::BlockCountMismatch`] — Block count doesn't match length
+/// - [`DecompressionError::InputTooLarge`] — Decompressed size exceeds safe limits
+/// - [`DecompressionError::ExcessiveBlockCount`] — Block count exceeds safe limits
+///
+/// # Example
+///
+/// ```
+/// use simd_bp128::{compress, decompressed_len, decompress_into};
+///
+/// let data: Vec<u32> = (0..256).map(|i| i % 1000).collect();
+/// let compressed = compress(&data).unwrap();
+///
+/// let len = decompressed_len(&compressed).unwrap();
+/// let mut output = vec![0u32; len];
+/// let count = decompress_into(&compressed, &mut output).unwrap();
+/// assert_eq!(&data[..], &output[..count]);
+/// ```
+pub fn decompressed_len(input: &[u8]) -> Result<usize, DecompressionError> {
     if input.is_empty() {
         return Ok(0);
     }
@@ -100,6 +126,7 @@ pub(crate) fn max_decompressed_size(input: &[u8]) -> Result<usize, Decompression
 /// Decompresses `input` into the provided `output` buffer.
 ///
 /// Returns the number of values written on success.
+/// Use [`decompressed_len`] to determine the output buffer size.
 ///
 /// # Errors
 ///
@@ -110,16 +137,16 @@ pub(crate) fn max_decompressed_size(input: &[u8]) -> Result<usize, Decompression
 /// # Example
 ///
 /// ```
-/// use simd_bp128::{compress, decompress_into};
+/// use simd_bp128::{compress, decompressed_len, decompress_into};
 ///
 /// let data: Vec<u32> = (0..256).map(|i| i % 1000).collect();
 /// let compressed = compress(&data).unwrap();
-/// let mut output = vec![0u32; data.len()];
+/// let mut output = vec![0u32; decompressed_len(&compressed).unwrap()];
 /// let count = decompress_into(&compressed, &mut output).unwrap();
 /// assert_eq!(&data[..], &output[..count]);
 /// ```
 pub fn decompress_into(input: &[u8], output: &mut [u32]) -> Result<usize, DecompressionError> {
-    let total_count = max_decompressed_size(input)?;
+    let total_count = decompressed_len(input)?;
 
     if output.len() < total_count {
         return Err(DecompressionError::TruncatedData {
@@ -251,7 +278,7 @@ pub fn decompress(input: &[u8]) -> Result<Vec<u32>, DecompressionError> {
         return Ok(Vec::new());
     }
 
-    let total_count: usize = max_decompressed_size(input)?;
+    let total_count: usize = decompressed_len(input)?;
 
     let mut output: Vec<u32> = vec![0u32; total_count];
     decompress_into(input, &mut output)?;

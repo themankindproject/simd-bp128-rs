@@ -13,11 +13,13 @@ use crate::{BLOCK_SIZE, FORMAT_VERSION};
 /// # Example
 ///
 /// ```
-/// use simd_bp128::max_compressed_size;
+/// use simd_bp128::{compress_into, max_compressed_size};
 ///
-/// let max_size = max_compressed_size(1024);
-/// let mut buffer = vec![0u8; max_size];
-/// // Now use buffer with compress_into
+/// let data: Vec<u32> = (0..256).map(|i| i % 1000).collect();
+/// let mut buffer = vec![0u8; max_compressed_size(data.len())];
+/// let bytes_written = compress_into(&data, &mut buffer).unwrap();
+/// buffer.truncate(bytes_written);
+/// assert!(bytes_written < max_compressed_size(data.len()));
 /// ```
 #[inline]
 pub fn max_compressed_size(input_len: usize) -> usize {
