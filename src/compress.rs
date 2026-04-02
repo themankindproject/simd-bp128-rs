@@ -29,7 +29,15 @@ pub fn max_compressed_size(input_len: usize) -> usize {
     let num_full_blocks: usize = input_len / BLOCK_SIZE;
     let remaining: usize = input_len % BLOCK_SIZE;
     let num_blocks: usize = num_full_blocks + usize::from(remaining > 0);
-    1 + 8 + num_blocks + num_blocks * packed_block_size(32)
+    let packed = packed_block_size(32);
+    // Checked arithmetic prevents silent overflow on 32-bit targets.
+    // Returns usize::MAX if the result doesn't fit, so callers get a
+    // clearly-wrong-but-safe value instead of a wrapped-too-small one.
+    num_blocks
+        .checked_mul(packed)
+        .and_then(|v| v.checked_add(num_blocks))
+        .and_then(|v| v.checked_add(9))
+        .unwrap_or(usize::MAX)
 }
 
 /// Compresses `input` into the provided `output` buffer.
@@ -375,5 +383,16 @@ mod tests {
                 u32::from_le_bytes([compressed[1], compressed[2], compressed[3], compressed[4]]);
             assert_eq!(input_len as usize, n, "input_len header mismatch for n={n}");
         }
+    }
+
+    #[test]
+    fn test_max_compressed_size_overflow_safe() {
+        // On 64-bit this is a normal value. On 32-bit, the old code would
+        // silently wrap; the checked arithmetic returns usize::MAX instead.
+        let size = max_compressed_size(u32::MAX as usize);
+        assert!(size > 0, "must not wrap to zero");
+        // Must be at least the header (9 bytes) + bit_widths directory.
+        let expected_blocks = (u32::MAX as usize + 127) / 128;
+        assert!(size >= 9 + expected_blocks);
     }
 }

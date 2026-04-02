@@ -8,7 +8,12 @@ const MAX_DECOMPRESSED_VALUES: usize = 1_000_000_000;
 const MAX_BLOCKS: usize = MAX_DECOMPRESSED_VALUES / 128 + 1;
 const HEADER_SIZE: usize = 9;
 
-/// Maps a generic `Error` to a `DecompressionError` with position context.
+/// Maps a generic `Error` from the unpack backend to a `DecompressionError`.
+///
+/// Only `InvalidBitWidth` and `InputTooShort` are expected during
+/// decompression. `OutputTooSmall` and `CompressionError` indicate an
+/// internal logic error (the caller should have validated buffer sizes
+/// before invoking the backend).
 fn map_error(e: Error, data_pos: usize, packed_size: usize) -> DecompressionError {
     match e {
         Error::InvalidBitWidth(bw) => DecompressionError::InvalidBitWidth { bit_width: bw },
