@@ -1,6 +1,6 @@
 [package]
 name = "packsimd"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 authors = ["Ashutosh Kumar <kumarashutosh34169@gmail.com>"]
 description = "SIMD-accelerated bit packing compression for u32 arrays"
