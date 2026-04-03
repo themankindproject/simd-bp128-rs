@@ -73,6 +73,8 @@ pub enum DecompressionError {
     ExcessiveBlockCount { max: usize, got: usize },
     /// The format version byte is not recognized.
     UnsupportedVersion { version: u8 },
+    /// The output buffer is too small to hold the decompressed values.
+    OutputTooSmall { need: usize, got: usize },
 }
 
 impl std::fmt::Display for Error {
@@ -161,6 +163,13 @@ impl std::fmt::Display for DecompressionError {
             }
             DecompressionError::UnsupportedVersion { version } => {
                 write!(f, "Unsupported format version: {} (expected 1)", version)
+            }
+            DecompressionError::OutputTooSmall { need, got } => {
+                write!(
+                    f,
+                    "Output buffer too small: need {} values, got {}",
+                    need, got
+                )
             }
         }
     }

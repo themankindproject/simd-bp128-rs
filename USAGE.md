@@ -71,6 +71,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     cbuf.truncate(cbytes);
 
     // Decompress into pre-allocated buffer
+    // NOTE: the buffer is fully overwritten — no need to zero it first
     let dlen = decompressed_len(&cbuf)?;
     let mutdbuf = vec![0u32; dlen];
     let dcount = decompress_into(&cbuf, &mutdbuf)?;
@@ -290,6 +291,7 @@ Returned by `decompress`, `decompress_into`, and `decompressed_len`.
 | `TruncatedData { position, needed, have }` | Packed data is shorter than expected |
 | `InputTooLarge { max, got }` | Decompressed size exceeds 1 billion values |
 | `ExcessiveBlockCount { max, got }` | Block count exceeds safe limits |
+| `OutputTooSmall { need, got }` | Output buffer smaller than `decompressed_len()` |
 
 ```rust
 use simd_bp128::{decompress, DecompressionError};

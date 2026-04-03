@@ -22,11 +22,7 @@ fn map_error(e: Error, data_pos: usize, packed_size: usize) -> DecompressionErro
             needed: need,
             have: got,
         },
-        Error::OutputTooSmall { need, got } => DecompressionError::TruncatedData {
-            position: data_pos,
-            needed: need,
-            have: got,
-        },
+        Error::OutputTooSmall { need, got } => DecompressionError::OutputTooSmall { need, got },
         Error::CompressionError(_) => DecompressionError::TruncatedData {
             position: data_pos,
             needed: packed_size,
@@ -151,13 +147,16 @@ pub fn decompressed_len(input: &[u8]) -> Result<usize, DecompressionError> {
 /// assert_eq!(&data[..], &output[..count]);
 /// ```
 pub fn decompress_into(input: &[u8], output: &mut [u32]) -> Result<usize, DecompressionError> {
+    if input.is_empty() {
+        return Ok(0);
+    }
+
     let total_count = decompressed_len(input)?;
 
     if output.len() < total_count {
-        return Err(DecompressionError::TruncatedData {
-            position: 0,
-            needed: total_count,
-            have: output.len(),
+        return Err(DecompressionError::OutputTooSmall {
+            need: total_count,
+            got: output.len(),
         });
     }
 
@@ -175,6 +174,7 @@ pub fn decompress_into(input: &[u8], output: &mut [u32]) -> Result<usize, Decomp
         let write_pos = block_idx * BLOCK_SIZE;
 
         if bit_width == 0 {
+            output[write_pos..write_pos + BLOCK_SIZE].fill(0);
             continue;
         }
 
@@ -245,6 +245,8 @@ pub fn decompress_into(input: &[u8], output: &mut [u32]) -> Result<usize, Decomp
                 &mut output[write_pos..write_pos + remaining],
             )
             .map_err(|e| map_error(e, data_pos, packed_size))?;
+        } else {
+            output[write_pos..write_pos + remaining].fill(0);
         }
     }
 
