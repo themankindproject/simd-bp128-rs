@@ -38,42 +38,157 @@ pub enum Error {
 /// Errors that can occur during compression operations.
 ///
 /// These errors indicate problems with the input data or output buffer
-/// during the compression process.
+/// during the compression process. This enum is `#[non_exhaustive]` to
+/// allow future variants to be added without a breaking change.
+///
+/// # Example
+///
+/// ```
+/// use packsimd::CompressionError;
+///
+/// fn handle_compression_error(err: &CompressionError) -> &'static str {
+///     match err {
+///         CompressionError::InputTooLarge { .. } => "Input exceeds u32::MAX values",
+///         CompressionError::OutputTooSmall { .. } => "Output buffer too small",
+///         _ => "Unknown compression error",
+///     }
+/// }
+/// ```
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CompressionError {
-    /// The input array exceeds the maximum supported size.
+    /// The input array exceeds the maximum supported size of `u32::MAX` values.
+    ///
+    /// This limit exists because the compressed header stores the input length
+    /// as a 32-bit unsigned integer. Inputs larger than this cannot be represented
+    /// in the binary format.
+    ///
+    /// # Fields
+    ///
+    /// - `max`: The maximum allowed number of values (`u32::MAX`).
+    /// - `got`: The actual number of values in the input.
     InputTooLarge { max: usize, got: usize },
     /// The output buffer is too small to hold the compressed data.
+    ///
+    /// The output buffer must be at least [`max_compressed_size(input.len())`]
+    /// bytes. Use that function to compute the minimum required size before
+    /// calling [`compress_into`](crate::compress_into).
+    ///
+    /// # Fields
+    ///
+    /// - `need`: The minimum number of bytes required.
+    /// - `got`: The actual size of the output buffer.
     OutputTooSmall { need: usize, got: usize },
 }
 
 /// Errors that can occur during decompression operations.
 ///
-/// These errors indicate problems with the compressed data format or
-/// insufficient output buffer space during decompression.
+/// These errors indicate problems with the compressed data format, data integrity,
+/// or insufficient output buffer space during decompression. This enum is
+/// `#[non_exhaustive]` to allow future variants to be added without a breaking change.
+///
+/// # Example
+///
+/// ```
+/// use packsimd::DecompressionError;
+///
+/// fn handle_decompression_error(err: &DecompressionError) -> &'static str {
+///     match err {
+///         DecompressionError::HeaderTooSmall { .. } => "Compressed data header is incomplete",
+///         DecompressionError::TruncatedData { .. } => "Compressed data is truncated",
+///         DecompressionError::InvalidBitWidth { .. } => "Invalid bit width in block directory",
+///         DecompressionError::UnsupportedVersion { .. } => "Unknown format version",
+///         DecompressionError::OutputTooSmall { .. } => "Output buffer too small",
+///         _ => "Unknown decompression error",
+///     }
+/// }
+/// ```
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DecompressionError {
-    /// The compressed data header is incomplete.
+    /// The compressed data header is incomplete — fewer than 9 bytes provided.
+    ///
+    /// The header consists of: 1 byte version + 4 bytes input length + 4 bytes block count.
+    ///
+    /// # Fields
+    ///
+    /// - `needed`: The minimum number of bytes required (9).
+    /// - `have`: The actual number of bytes in the input.
     HeaderTooSmall { needed: usize, have: usize },
     /// The compressed data is truncated and missing expected bytes.
+    ///
+    /// This error occurs when the input ends before all packed block data could
+    /// be read. The compressed data may have been cut off during transmission
+    /// or storage.
+    ///
+    /// # Fields
+    ///
+    /// - `position`: The byte offset in the input where the truncation was detected.
+    /// - `needed`: The number of additional bytes required.
+    /// - `have`: The number of bytes actually available from `position`.
     TruncatedData {
         position: usize,
         needed: usize,
         have: usize,
     },
-    /// A bit width value exceeds the valid range (0-32).
+    /// A bit width value in the block directory exceeds the valid range (0–32).
+    ///
+    /// Each block stores its values using a bit width between 0 (all zeros) and
+    /// 32 (full `u32` values). A value outside this range indicates corrupted
+    /// or malformed data.
+    ///
+    /// # Fields
+    ///
+    /// - `bit_width`: The invalid bit width value found in the data.
     InvalidBitWidth { bit_width: u8 },
-    /// The number of blocks in the header doesn't match the value count.
+    /// The number of blocks in the header doesn't match the expected count for the value count.
+    ///
+    /// The expected block count is `ceil(input_len / 128)`. A mismatch indicates
+    /// the header fields are inconsistent, which suggests corrupted data.
+    ///
+    /// # Fields
+    ///
+    /// - `expected`: The expected number of blocks based on `input_len`.
+    /// - `found`: The actual number of blocks stored in the header.
     BlockCountMismatch { expected: usize, found: usize },
-    /// The decompressed value count would exceed safe limits.
+    /// The decompressed value count would exceed the safe limit of 1 billion values.
+    ///
+    /// This safeguard prevents denial-of-service attacks where a malicious header
+    /// claims an enormous number of values, causing an out-of-memory condition.
+    ///
+    /// # Fields
+    ///
+    /// - `max`: The maximum allowed number of values (1,000,000,000).
+    /// - `got`: The value count claimed by the header.
     InputTooLarge { max: usize, got: usize },
-    /// The number of blocks exceeds safe limits (possible malformed data).
+    /// The number of blocks exceeds the safe limit.
+    ///
+    /// This indicates either corrupted data or an attempt to trigger excessive
+    /// processing. The limit is derived from `MAX_DECOMPRESSED_VALUES / 128 + 1`.
+    ///
+    /// # Fields
+    ///
+    /// - `max`: The maximum allowed number of blocks.
+    /// - `got`: The actual number of blocks stored in the header.
     ExcessiveBlockCount { max: usize, got: usize },
     /// The format version byte is not recognized.
+    ///
+    /// Currently only version 1 is supported. Data compressed with a different
+    /// version of the library may not be compatible.
+    ///
+    /// # Fields
+    ///
+    /// - `version`: The unsupported version byte found in the header.
     UnsupportedVersion { version: u8 },
     /// The output buffer is too small to hold the decompressed values.
+    ///
+    /// Use [`decompressed_len`](crate::decompressed_len) to determine the required
+    /// output buffer size before calling [`decompress_into`](crate::decompress_into).
+    ///
+    /// # Fields
+    ///
+    /// - `need`: The minimum number of `u32` values the buffer must hold.
+    /// - `got`: The actual capacity of the output buffer.
     OutputTooSmall { need: usize, got: usize },
 }
 

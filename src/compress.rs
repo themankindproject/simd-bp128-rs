@@ -41,16 +41,52 @@ pub fn max_compressed_size(input_len: usize) -> usize {
         .unwrap_or(usize::MAX)
 }
 
-/// Compresses `input` into the provided `output` buffer.
+/// Compresses `input` into the provided `output` buffer using the BP128 algorithm.
 ///
-/// Returns the number of bytes written on success.
-/// Use [`max_compressed_size`] to determine the minimum buffer size.
+/// This is the zero-allocation variant of [`compress`]. It writes compressed data
+/// directly into a caller-provided buffer, avoiding any heap allocation on the
+/// compression side.
+///
+/// BP128 divides the input into blocks of 128 values and stores each block using
+/// the minimum number of bits required to represent the maximum value in that block.
+/// This achieves variable-bit-width compression optimized for integer arrays.
+///
+/// # Binary Format
+///
+/// ```text
+/// [version: u8][input_len: u32 LE][num_blocks: u32 LE][bit_widths: u8 × N][packed_data: u8[]]
+/// ```
+///
+/// | Field | Type | Description |
+/// |-------|------|-------------|
+/// | version | `u8` | Format version (currently 1) |
+/// | input_len | `u32` LE | Original number of `u32` values |
+/// | num_blocks | `u32` LE | Number of blocks (ceiling of `input.len() / 128`) |
+/// | bit_widths | `u8` × N | One byte per block (0 = all values are zero) |
+/// | packed_data | `u8[]` | Bit-packed values, blocks concatenated |
+///
+/// # Parameters
+///
+/// - `input`: Slice of `u32` integers to compress. Must not exceed `u32::MAX` elements.
+/// - `output`: Mutable byte slice to write compressed data into. Must be at least
+///   [`max_compressed_size(input.len())`] bytes long.
+///
+/// # Returns
+///
+/// The number of bytes written to `output` on success. The actual compressed size
+/// will typically be smaller than the worst-case size returned by [`max_compressed_size`].
+///
+/// # Performance
+///
+/// - Time complexity: O(n) where n = `input.len()`
+/// - Space complexity: O(1) — no heap allocation
+/// - Automatically selects the best available SIMD backend (SSE4.1 on x86_64, scalar fallback otherwise)
 ///
 /// # Errors
 ///
-/// Returns an error if:
-/// - `input.len() > u32::MAX`
-/// - `output.len() < max_compressed_size(input.len())`
+/// Returns [`Error::CompressionError`] if:
+/// - [`CompressionError::InputTooLarge`] — `input.len() > u32::MAX`
+/// - [`CompressionError::OutputTooSmall`] — `output.len() < max_compressed_size(input.len())`
 ///
 /// # Example
 ///
@@ -62,6 +98,10 @@ pub fn max_compressed_size(input_len: usize) -> usize {
 /// let bytes_written = compress_into(&data, &mut buffer).unwrap();
 /// buffer.truncate(bytes_written);
 /// ```
+///
+/// # Panics
+///
+/// This function never panics. All errors are returned as [`Error`].
 pub fn compress_into(input: &[u32], output: &mut [u8]) -> Result<usize, Error> {
     if input.is_empty() {
         return Ok(0);

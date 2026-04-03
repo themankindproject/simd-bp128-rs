@@ -142,16 +142,45 @@ fn parse_header(input: &[u8]) -> Result<ParsedHeader, DecompressionError> {
     })
 }
 
-/// Decompresses `input` into the provided `output` buffer.
+/// Decompresses BP128-compressed data into the provided `output` buffer.
 ///
-/// Returns the number of values written on success.
-/// Use [`decompressed_len`] to determine the output buffer size.
+/// This is the zero-allocation variant of [`decompress`]. It writes decompressed
+/// values directly into a caller-provided buffer, avoiding any heap allocation on
+/// the decompression side.
+///
+/// The decompression process reads the binary format produced by [`compress`](crate::compress):
+/// 1. Parses the header (version, original length, block count)
+/// 2. Reads per-block bit widths from the directory
+/// 3. Unpacks each block using its stored bit width
+///
+/// # Parameters
+///
+/// - `input`: Byte slice containing BP128-compressed data.
+/// - `output`: Mutable slice of `u32` to receive decompressed values. Must be at
+///   least [`decompressed_len(input)`] elements long.
+///
+/// # Returns
+///
+/// The number of `u32` values written to `output` on success. This will equal the
+/// original input length stored in the compressed header.
+///
+/// # Performance
+///
+/// - Time complexity: O(n) where n = number of decompressed values
+/// - Space complexity: O(1) — no heap allocation
+/// - Automatically selects the best available SIMD backend (SSE4.1 on x86_64, scalar fallback otherwise)
 ///
 /// # Errors
 ///
-/// Returns an error if:
-/// - The input header is malformed
-/// - `output.len()` is less than the decompressed size
+/// Returns [`DecompressionError`] if:
+/// - [`DecompressionError::HeaderTooSmall`] — `input` is shorter than 9 bytes
+/// - [`DecompressionError::UnsupportedVersion`] — Version byte is not recognized
+/// - [`DecompressionError::InvalidBitWidth`] — A bit width byte exceeds 32
+/// - [`DecompressionError::TruncatedData`] — Missing bytes in the packed data section
+/// - [`DecompressionError::BlockCountMismatch`] — Block count doesn't match value count
+/// - [`DecompressionError::InputTooLarge`] — Decompressed size exceeds 1 billion values
+/// - [`DecompressionError::ExcessiveBlockCount`] — Block count exceeds safe limits
+/// - [`DecompressionError::OutputTooSmall`] — `output.len() < decompressed_len(input)`
 ///
 /// # Example
 ///
@@ -164,6 +193,10 @@ fn parse_header(input: &[u8]) -> Result<ParsedHeader, DecompressionError> {
 /// let count = decompress_into(&compressed, &mut output).unwrap();
 /// assert_eq!(&data[..], &output[..count]);
 /// ```
+///
+/// # Panics
+///
+/// This function never panics. All errors are returned as [`DecompressionError`].
 pub fn decompress_into(input: &[u8], output: &mut [u32]) -> Result<usize, DecompressionError> {
     if input.is_empty() {
         return Ok(0);
