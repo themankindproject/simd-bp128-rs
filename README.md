@@ -3,7 +3,7 @@
 [![Crates.io](https://img.shields.io/crates/v/simd-bp128)](https://crates.io/crates/simd-bp128)
 [![Documentation](https://docs.rs/simd-bp128/badge.svg)](https://docs.rs/simd-bp128)
 [![License](https://img.shields.io/crates/l/simd-bp128)](LICENSE)
-[![Build Status](https://img.shields.io/github/actions/workflow/status/themankindproject/simd-bp128/ci.yml)](https://github.com/themankindproject/simd-bp128/actions)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/themankindproject/simd-bp128-rs/ci.yml)](https://github.com/themankindproject/simd-bp128/actions)
 ![Rust Version](https://img.shields.io/badge/rust-1.70%2B-blue)
 
 > **Note:** This release includes the **Scalar** and **SSE4.1** backends only. AVX2 and AVX-512 implementations are planned for a future release. On x86_64 CPUs with SSE4.1, the SSE4.1 backend is used automatically.
@@ -119,23 +119,7 @@ For complete API reference and usage examples, see [USAGE.md](USAGE.md).
 
 Benchmarked on x86_64 (SSE4.1) with LTO and `opt-level=3`.
 
-### Block-Level Kernels (128 values)
-
-Scalar vs SSE throughput — higher is better:
-
-| Width | Scalar Pack | SSE Pack | Scalar Unpack | SSE Unpack |
-|:------|------------:|---------:|--------------:|-----------:|
-| **1-bit**  | 16.0 GiB/s | **46.9 GiB/s** (2.9×) | 181 MiB/s | **535 MiB/s** (3.0×) |
-| **2-bit**  | **10.3 GiB/s** | 4.0 GiB/s | 375 MiB/s | **867 MiB/s** (2.3×) |
-| **4-bit**  | **15.6 GiB/s** | 4.0 GiB/s | 465 MiB/s | **5.9 GiB/s** (12.6×) |
-| **8-bit**  | **30.1 GiB/s** | 12.6 GiB/s | 8.3 GiB/s | **16.9 GiB/s** (2.0×) |
-| **16-bit** | **17.9 GiB/s** | 15.6 GiB/s | 7.5 GiB/s | **32.3 GiB/s** (4.3×) |
-| **24-bit** | **4.7 GiB/s** | 3.3 GiB/s | 4.0 GiB/s | **6.6 GiB/s** (1.7×) |
-| **32-bit** | 73.3 GiB/s | **74.4 GiB/s** | 67.8 GiB/s | **73.8 GiB/s** |
-
-**SSE dominates unpack** across every bit width (1.7×–12.6×). For compression-heavy workloads, scalar pack is competitive or faster for most widths.
-
-### End-to-End Throughput (10,240 values)
+### Compression Ratios
 
 | Data Pattern | Ratio | Compress | Decompress |
 |:-------------|------:|---------:|-----------:|
@@ -143,23 +127,20 @@ Scalar vs SSE throughput — higher is better:
 | **Constant (all same)** | 18.97% | 2.8 GiB/s | 649 MiB/s |
 | **Random (full entropy)** | 100.22% | 23.5 GiB/s | 24.0 GiB/s |
 
-### End-to-End Throughput (1M values)
+### Throughput at Scale (1M values)
 
 | Bit Width | Compress | Decompress |
 |:----------|---------:|-----------:|
 | 1-bit | 13.7 GiB/s | 11.1 GiB/s |
 | 8-bit | 8.9 GiB/s | 16.0 GiB/s |
 | 16-bit | 7.1–7.5 GiB/s | 13.8–14.2 GiB/s |
-| 24-bit | 2.7 GiB/s | 5.4–5.8 GiB/s |
 | 32-bit | 7.9–8.3 GiB/s | 9.3–9.8 GiB/s |
 
-### Run Benchmarks
+SSE4.1 provides **1.7×–12.6× faster unpack** across all bit widths. Scalar pack is competitive for most widths.
 
+Run benchmarks:
 ```bash
-cargo bench                              # All benchmarks
-cargo bench --bench throughput_comparison # Scalar vs SSE kernels
-cargo bench --bench mixed_data            # Compression ratios + throughput
-cargo bench --bench compression           # End-to-end at scale
+cargo bench
 ```
 
 ## Security
@@ -214,8 +195,6 @@ cargo doc --no-deps --open
 | SSE4.1 backend | Done |
 | AVX2 backend | Planned |
 | AVX-512 backend | Planned |
-| Streaming compression | Planned |
-| `no_std` support | Planned |
 
 ## License
 
