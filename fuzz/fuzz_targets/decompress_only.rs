@@ -1,7 +1,7 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use simd_bp128::decompress;
+use packsimd::decompress;
 
 // Fuzz test: decompression should never panic on arbitrary input
 fuzz_target!(|data: &[u8]| {

@@ -6,14 +6,14 @@
 //! independent of allocation and format overhead.
 
 use criterion::{criterion_group, criterion_main, Criterion, Throughput};
+use packsimd::internal::{ScalarBackend, SimdBackend};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
-use simd_bp128::internal::{ScalarBackend, SimdBackend};
 use std::hint::black_box;
 use std::time::Duration;
 
 #[cfg(target_arch = "x86_64")]
-use simd_bp128::internal::SseBackend;
+use packsimd::internal::SseBackend;
 
 fn generate_block(bits: u32) -> [u32; 128] {
     let mut rng = StdRng::seed_from_u64(42);

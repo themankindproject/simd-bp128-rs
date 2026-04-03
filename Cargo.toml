@@ -1,5 +1,5 @@
 [package]
-name = "simd-bp128"
+name = "packsimd"
 version = "0.1.0"
 edition = "2021"
 authors = ["Ashutosh Kumar <kumarashutosh34169@gmail.com>"]
@@ -10,6 +10,15 @@ keywords = ["simd", "compression", "bitpacking", "performance"]
 categories = ["compression", "algorithms"]
 rust-version = "1.70"
 readme = "README.md"
+exclude = [
+    ".github",
+    "benches",
+    "examples",
+    "fuzz",
+    "tests",
+    "run_fuzz.sh",
+    "target",
+]
 
 [dependencies]
 

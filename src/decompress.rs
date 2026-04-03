@@ -59,7 +59,7 @@ pub(crate) struct ParsedHeader {
 /// # Example
 ///
 /// ```
-/// use simd_bp128::{compress, decompressed_len, decompress_into};
+/// use packsimd::{compress, decompressed_len, decompress_into};
 ///
 /// let data: Vec<u32> = (0..256).map(|i| i % 1000).collect();
 /// let compressed = compress(&data).unwrap();
@@ -156,7 +156,7 @@ fn parse_header(input: &[u8]) -> Result<ParsedHeader, DecompressionError> {
 /// # Example
 ///
 /// ```
-/// use simd_bp128::{compress, decompressed_len, decompress_into};
+/// use packsimd::{compress, decompressed_len, decompress_into};
 ///
 /// let data: Vec<u32> = (0..256).map(|i| i % 1000).collect();
 /// let compressed = compress(&data).unwrap();
@@ -299,7 +299,7 @@ pub fn decompress_into(input: &[u8], output: &mut [u32]) -> Result<usize, Decomp
 /// # Example
 ///
 /// ```
-/// use simd_bp128::{compress, decompress};
+/// use packsimd::{compress, decompress};
 ///
 /// let data: Vec<u32> = (0..256).map(|i| i % 1000).collect();
 /// let compressed = compress(&data).unwrap();

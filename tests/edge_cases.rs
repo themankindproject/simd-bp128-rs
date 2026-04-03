@@ -2,7 +2,7 @@
 //!
 //! These tests verify behavior at boundaries and under stress conditions.
 
-use simd_bp128::{compress, decompress};
+use packsimd::{compress, decompress};
 
 mod edge_cases {
     use super::*;

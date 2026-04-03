@@ -1,4 +1,4 @@
-# simd-bp128 Usage Guide
+# packsimd Usage Guide
 
 > Complete API reference and examples for high-performance BP128 integer compression
 
@@ -32,13 +32,13 @@ Add the dependency to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-simd-bp128 = "0.1"
+packsimd = "0.1"
 ```
 
 ### Basic Example
 
 ```rust
-use simd_bp128::{compress, decompress};
+use packsimd::{compress, decompress};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let data: Vec<u32> = (0..1024).map(|i| i % 1000).collect();
@@ -60,7 +60,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 ### Zero-Allocation Example
 
 ```rust
-use simd_bp128::{compress_into, decompress_into, max_compressed_size, decompressed_len};
+use packsimd::{compress_into, decompress_into, max_compressed_size, decompressed_len};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let data: Vec<u32> = (0..1024).map(|i| i % 1000).collect();
@@ -102,7 +102,7 @@ Compresses a `u32` slice into a `Vec<u8>` using BP128 encoding. Allocates the ou
 
 **Example:**
 ```rust
-use simd_bp128::compress;
+use packsimd::compress;
 
 let data: Vec<u32> = (0..256).map(|i| i as u32).collect();
 let compressed = compress(&data)?;
@@ -133,7 +133,7 @@ Compresses into a caller-owned buffer. Zero allocation on the compression side.
 
 **Example:**
 ```rust
-use simd_bp128::{compress_into, max_compressed_size};
+use packsimd::{compress_into, max_compressed_size};
 
 let data: Vec<u32> = (0..256).map(|i| i % 1000).collect();
 let mut buffer = vec![0u8; max_compressed_size(data.len())];
@@ -155,7 +155,7 @@ The return value assumes every block uses 32-bit width. Actual compressed size w
 
 **Example:**
 ```rust
-use simd_bp128::max_compressed_size;
+use packsimd::max_compressed_size;
 
 let max = max_compressed_size(1024);
 println!("Worst case for 1024 values: {} bytes", max); // 522 bytes
@@ -180,7 +180,7 @@ Decompresses BP128-encoded bytes back into a `Vec<u32>`.
 
 **Example:**
 ```rust
-use simd_bp128::{compress, decompress};
+use packsimd::{compress, decompress};
 
 let data: Vec<u32> = (0..256).map(|i| i % 1000).collect();
 let compressed = compress(&data)?;
@@ -209,7 +209,7 @@ Decompresses into a caller-owned buffer. Use `decompressed_len` to size the buff
 
 **Example:**
 ```rust
-use simd_bp128::{compress, decompressed_len, decompress_into};
+use packsimd::{compress, decompressed_len, decompress_into};
 
 let data: Vec<u32> = (0..256).map(|i| i % 1000).collect();
 let compressed = compress(&data)?;
@@ -242,7 +242,7 @@ Use this to pre-allocate output buffers for `decompress_into`.
 
 **Example:**
 ```rust
-use simd_bp128::{compress, decompressed_len};
+use packsimd::{compress, decompressed_len};
 
 let data: Vec<u32> = (0..256).collect();
 let compressed = compress(&data)?;
@@ -267,7 +267,7 @@ Returned by `compress` and `compress_into`.
 | `OutputTooSmall { need, got }` | Output buffer smaller than `max_compressed_size()` |
 
 ```rust
-use simd_bp128::{compress_into, max_compressed_size, CompressionError};
+use packsimd::{compress_into, max_compressed_size, CompressionError};
 
 let data = vec![0u32; 100];
 let mut small_buf = vec![0u8; 10];
@@ -294,7 +294,7 @@ Returned by `decompress`, `decompress_into`, and `decompressed_len`.
 | `OutputTooSmall { need, got }` | Output buffer smaller than `decompressed_len()` |
 
 ```rust
-use simd_bp128::{decompress, DecompressionError};
+use packsimd::{decompress, DecompressionError};
 
 let bad_data = vec![0xFF; 5];
 
@@ -319,7 +319,7 @@ match decompress(&bad_data) {
 For maximum throughput, avoid all allocation in the hot loop:
 
 ```rust
-use simd_bp128::{compress_into, decompress_into, max_compressed_size, decompressed_len};
+use packsimd::{compress_into, decompress_into, max_compressed_size, decompressed_len};
 
 fn process_batch(chunks: &[Vec<u32>]) -> Result<Vec<Vec<u8>>, Box<dyn std::error::Error>> {
     // Pre-allocate worst-case buffers once
@@ -342,7 +342,7 @@ fn process_batch(chunks: &[Vec<u32>]) -> Result<Vec<Vec<u8>>, Box<dyn std::error
 Read the header to understand compressed data without decompressing:
 
 ```rust
-use simd_bp128::{compress, decompressed_len};
+use packsimd::{compress, decompressed_len};
 
 let data: Vec<u32> = (0..400).map(|i| i % 100).collect();
 let compressed = compress(&data)?;
@@ -370,7 +370,7 @@ println!("Bit widths: {:?}", bit_widths);
 The last block in a compressed array may contain fewer than 128 values. This is handled transparently by `compress`/`decompress`, but the format encodes it explicitly:
 
 ```rust
-use simd_bp128::{compress, decompress};
+use packsimd::{compress, decompress};
 
 // 200 values = 1 full block (128) + 1 partial block (72)
 let data: Vec<u32> = (0..200).map(|i| i as u32).collect();
@@ -433,7 +433,7 @@ Performance varies significantly by bit width:
 ### 4. Use `decompressed_len` to Avoid Guessing
 
 ```rust
-use simd_bp128::{decompressed_len, decompress_into};
+use packsimd::{decompressed_len, decompress_into};
 
 // Good: exact size from header
 let len = decompressed_len(&compressed)?;
@@ -486,6 +486,6 @@ MIT License - See LICENSE file for details.
 
 ## Links
 
-- [Crates.io](https://crates.io/crates/simd-bp128)
-- [Documentation](https://docs.rs/simd-bp128)
-- [Repository](https://github.com/themankindproject/simd-bp128)
+- [Crates.io](https://crates.io/crates/packsimd)
+- [Documentation](https://docs.rs/packsimd)
+- [Repository](https://github.com/themankindproject/packsimd)

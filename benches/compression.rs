@@ -1,7 +1,7 @@
 use criterion::{criterion_group, criterion_main, Criterion, Throughput};
+use packsimd::{compress, decompress};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
-use simd_bp128::{compress, decompress};
 use std::hint::black_box;
 
 fn generate_data_bits(len: usize, bits: u32, seed: u64) -> Vec<u32> {

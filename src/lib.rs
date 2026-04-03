@@ -6,7 +6,7 @@
 //! # Quick Start
 //!
 //! ```
-//! use simd_bp128::{compress, decompress};
+//! use packsimd::{compress, decompress};
 //!
 //! let data: Vec<u32> = (0..256).map(|i| i % 1000).collect();
 //! let compressed = compress(&data).unwrap();
@@ -20,7 +20,7 @@
 //! with [`compress_into`] / [`decompress_into`]:
 //!
 //! ```
-//! use simd_bp128::{compress_into, max_compressed_size};
+//! use packsimd::{compress_into, max_compressed_size};
 //!
 //! let data: Vec<u32> = (0..256).map(|i| i % 1000).collect();
 //! let mut buffer = vec![0u8; max_compressed_size(data.len())];
@@ -29,7 +29,7 @@
 //! ```
 //!
 //! ```
-//! use simd_bp128::{compress, decompressed_len, decompress_into};
+//! use packsimd::{compress, decompressed_len, decompress_into};
 //!
 //! let data: Vec<u32> = (0..256).map(|i| i % 1000).collect();
 //! let compressed = compress(&data).unwrap();
@@ -79,7 +79,7 @@
 
 #[cfg(target_endian = "big")]
 compile_error!(
-    "simd-bp128 requires a little-endian target. \
+    "packsimd requires a little-endian target. \
      The bit-packing format and zero-copy u32↔u8 reinternals assume little-endian byte order."
 );
 

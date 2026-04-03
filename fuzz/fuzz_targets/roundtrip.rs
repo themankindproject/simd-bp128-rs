@@ -1,7 +1,7 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use simd_bp128::{compress, decompress};
+use packsimd::{compress, decompress};
 
 // Fuzz test: compress -> decompress roundtrip must produce identical output
 fuzz_target!(|data: &[u8]| {

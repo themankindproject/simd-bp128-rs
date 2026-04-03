@@ -1,7 +1,7 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use simd_bp128::compress;
+use packsimd::compress;
 
 // Fuzz test: compression should handle all inputs safely
 fuzz_target!(|data: &[u8]| {

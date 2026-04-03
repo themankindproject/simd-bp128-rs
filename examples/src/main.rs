@@ -1,4 +1,4 @@
-use simd_bp128::{compress, decompress, DecompressionError, Error};
+use packsimd::{compress, decompress, DecompressionError, Error};
 
 fn main() {
     basic_example();

@@ -65,8 +65,8 @@ jobs:
       - name: Install cargo-fuzz
         run: cargo install cargo-fuzz
       - name: Run fuzz_roundtrip
-        run: cargo fuzz run fuzz_targets/roundtrip -- -max_total_time=60s -timeout=10s || true
+        run: cargo fuzz run roundtrip -- -max_total_time=60s -timeout=10s || true
       - name: Run fuzz_compress_only
-        run: cargo fuzz run fuzz_targets/compress_only -- -max_total_time=60s -timeout=10s || true
+        run: cargo fuzz run compress_only -- -max_total_time=60s -timeout=10s || true
       - name: Run fuzz_decompress_only
-        run: cargo fuzz run fuzz_targets/decompress_only -- -max_total_time=60s -timeout=10s || true
+        run: cargo fuzz run decompress_only -- -max_total_time=60s -timeout=10s || true

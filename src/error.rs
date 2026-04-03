@@ -7,7 +7,7 @@
 /// # Example
 ///
 /// ```
-/// use simd_bp128::Error;
+/// use packsimd::Error;
 ///
 /// fn handle_error(err: &Error) -> &'static str {
 ///     match err {

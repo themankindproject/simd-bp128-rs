@@ -2,8 +2,8 @@
 //!
 //! These tests verify that compression and decompression are inverse operations.
 
+use packsimd::{compress, decompress};
 use proptest::prelude::*;
-use simd_bp128::{compress, decompress};
 
 /// Test that decompression correctly reverses compression
 fn roundtrip_test(input: &[u32]) {

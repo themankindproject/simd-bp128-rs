@@ -1,9 +1,9 @@
-# simd-bp128
+# packsimd
 
-[![Crates.io](https://img.shields.io/crates/v/simd-bp128)](https://crates.io/crates/simd-bp128)
-[![Documentation](https://docs.rs/simd-bp128/badge.svg)](https://docs.rs/simd-bp128)
-[![License](https://img.shields.io/crates/l/simd-bp128)](LICENSE)
-[![Build Status](https://img.shields.io/github/actions/workflow/status/themankindproject/simd-bp128-rs/ci.yml)](https://github.com/themankindproject/simd-bp128/actions)
+[![Crates.io](https://img.shields.io/crates/v/packsimd)](https://crates.io/crates/packsimd)
+[![Documentation](https://docs.rs/packsimd/badge.svg)](https://docs.rs/packsimd)
+[![License](https://img.shields.io/crates/l/packsimd)](LICENSE)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/themankindproject/packsimd/ci.yml)](https://github.com/themankindproject/packsimd/actions)
 ![Rust Version](https://img.shields.io/badge/rust-1.70%2B-blue)
 
 > **Note:** This release includes the **Scalar** and **SSE4.1** backends only. AVX2 and AVX-512 implementations are planned for a future release. On x86_64 CPUs with SSE4.1, the SSE4.1 backend is used automatically.
@@ -12,7 +12,7 @@ High-performance BP128 compression for `u32` integer arrays with **SIMD accelera
 
 ## Overview
 
-`simd-bp128` compresses integer arrays by packing each block of 128 values using the minimum bit width required. It automatically detects and uses the best available SIMD backend at runtime.
+`packsimd` compresses integer arrays by packing each block of 128 values using the minimum bit width required. It automatically detects and uses the best available SIMD backend at runtime.
 
 | Use Case | Example | Typical Ratio |
 |----------|---------|---------------|
@@ -38,13 +38,13 @@ High-performance BP128 compression for `u32` integer arrays with **SIMD accelera
 
 ```toml
 [dependencies]
-simd-bp128 = "0.1"
+packsimd = "0.1"
 ```
 
 ## Quick Start
 
 ```rust
-use simd_bp128::{compress, decompress};
+use packsimd::{compress, decompress};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let data: Vec<u32> = (0..256).map(|i| i % 1000).collect();
@@ -58,7 +58,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 ### Zero-Allocation Path
 
 ```rust
-use simd_bp128::{compress_into, decompress_into, max_compressed_size, decompressed_len};
+use packsimd::{compress_into, decompress_into, max_compressed_size, decompressed_len};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let data: Vec<u32> = (0..256).map(|i| i % 1000).collect();
@@ -155,7 +155,7 @@ cargo bench
 See the `examples/` directory:
 
 ```bash
-cargo run --package simd-bp128-examples
+cargo run --package packsimd-examples
 ```
 
 ## Contributing
@@ -174,8 +174,8 @@ Contributions are welcome! Please:
 ### Development Setup
 
 ```bash
-git clone https://github.com/themankindproject/simd-bp128
-cd simd-bp128
+git clone https://github.com/themankindproject/packsimd
+cd packsimd
 
 # Run tests
 cargo test --all-targets
