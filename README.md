@@ -3,7 +3,7 @@
 [![Crates.io](https://img.shields.io/crates/v/packsimd)](https://crates.io/crates/packsimd)
 [![Documentation](https://docs.rs/packsimd/badge.svg)](https://docs.rs/packsimd)
 [![License](https://img.shields.io/crates/l/packsimd)](LICENSE)
-[![Build Status](https://img.shields.io/github/actions/workflow/status/themankindproject/packsimd/ci.yml)](https://github.com/themankindproject/packsimd/actions)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/themankindproject/simd-bp128-rs/ci.yml)](https://github.com/themankindproject/packsimd/actions)
 ![Rust Version](https://img.shields.io/badge/rust-1.70%2B-blue)
 
 > **Note:** This release includes the **Scalar** and **SSE4.1** backends only. AVX2 and AVX-512 implementations are planned for a future release. On x86_64 CPUs with SSE4.1, the SSE4.1 backend is used automatically.
