@@ -5,11 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.1] -  2026-04-03
+## [0.1.1] - 2026-04-03
 
 ### Added
 - Detailed docstrings to all public APIs (`compress`, `compress_into`, `max_compressed_size`, `decompress`, `decompress_into`, `decompressed_len`)
 - Comprehensive variant-level documentation for `CompressionError` and `DecompressionError` with field descriptions and usage context
+- `[package.metadata.docs.rs]` configuration for docs.rs builds
+
+### Fixed
+- Broken intra-doc links in error type documentation
+- Repository URL pointing to wrong GitHub path
+
+[0.1.1]: https://github.com/themankindproject/simd-bp128-rs/releases/tag/v0.1.1
 
 ## [0.1.0] - 2026-04-03
 
