@@ -157,7 +157,7 @@ fn parse_header(input: &[u8]) -> Result<ParsedHeader, DecompressionError> {
 ///
 /// - `input`: Byte slice containing BP128-compressed data.
 /// - `output`: Mutable slice of `u32` to receive decompressed values. Must be at
-///   least [`decompressed_len(input)`] elements long.
+///   least [`decompressed_len`] elements long.
 ///
 /// # Returns
 ///

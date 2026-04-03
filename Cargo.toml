@@ -5,7 +5,7 @@ edition = "2021"
 authors = ["Ashutosh Kumar <kumarashutosh34169@gmail.com>"]
 description = "SIMD-accelerated bit packing compression for u32 arrays"
 license = "MIT"
-repository = "https://github.com/themankindproject/simd-bp128"
+repository = "https://github.com/themankindproject/simd-bp128-rs"
 keywords = ["simd", "compression", "bitpacking", "performance"]
 categories = ["compression", "algorithms"]
 rust-version = "1.70"
@@ -19,6 +19,10 @@ exclude = [
     "run_fuzz.sh",
     "target",
 ]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
 

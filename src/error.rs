@@ -70,9 +70,9 @@ pub enum CompressionError {
     InputTooLarge { max: usize, got: usize },
     /// The output buffer is too small to hold the compressed data.
     ///
-    /// The output buffer must be at least [`max_compressed_size(input.len())`]
+    /// The output buffer must be at least `max_compressed_size(input.len())`
     /// bytes. Use that function to compute the minimum required size before
-    /// calling [`compress_into`](crate::compress_into).
+    /// calling `compress_into`.
     ///
     /// # Fields
     ///

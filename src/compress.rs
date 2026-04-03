@@ -69,7 +69,7 @@ pub fn max_compressed_size(input_len: usize) -> usize {
 ///
 /// - `input`: Slice of `u32` integers to compress. Must not exceed `u32::MAX` elements.
 /// - `output`: Mutable byte slice to write compressed data into. Must be at least
-///   [`max_compressed_size(input.len())`] bytes long.
+///   [`max_compressed_size`] bytes long.
 ///
 /// # Returns
 ///
