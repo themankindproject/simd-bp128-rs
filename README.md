@@ -115,37 +115,49 @@ For complete API reference and usage examples, see [USAGE.md](USAGE.md).
 
 ## Performance
 
-Benchmarked on x86_64 with SSE4.1:
+Benchmarked on x86_64 (SSE4.1) with LTO and `opt-level=3`.
 
-### Block-Level (128 values)
+### Block-Level Kernels (128 values)
 
-| Operation | 1-bit | 8-bit | 16-bit | 24-bit | 32-bit |
-|:----------|------:|------:|-------:|-------:|-------:|
-| Pack | 107 ns | 16 ns | 27 ns | 103 ns | 133 ns |
-| Unpack | 102 ns | 15 ns | 32 ns | 90 ns | 26 ns |
+Scalar vs SSE throughput — higher is better:
+
+| Width | Scalar Pack | SSE Pack | Scalar Unpack | SSE Unpack |
+|:------|------------:|---------:|--------------:|-----------:|
+| **1-bit**  | 16.0 GiB/s | **46.9 GiB/s** (2.9×) | 181 MiB/s | **535 MiB/s** (3.0×) |
+| **2-bit**  | **10.3 GiB/s** | 4.0 GiB/s | 375 MiB/s | **867 MiB/s** (2.3×) |
+| **4-bit**  | **15.6 GiB/s** | 4.0 GiB/s | 465 MiB/s | **5.9 GiB/s** (12.6×) |
+| **8-bit**  | **30.1 GiB/s** | 12.6 GiB/s | 8.3 GiB/s | **16.9 GiB/s** (2.0×) |
+| **16-bit** | **17.9 GiB/s** | 15.6 GiB/s | 7.5 GiB/s | **32.3 GiB/s** (4.3×) |
+| **24-bit** | **4.7 GiB/s** | 3.3 GiB/s | 4.0 GiB/s | **6.6 GiB/s** (1.7×) |
+| **32-bit** | 73.3 GiB/s | **74.4 GiB/s** | 67.8 GiB/s | **73.8 GiB/s** |
+
+**SSE dominates unpack** across every bit width (1.7×–12.6×). For compression-heavy workloads, scalar pack is competitive or faster for most widths.
+
+### End-to-End Throughput (10,240 values)
+
+| Data Pattern | Ratio | Compress | Decompress |
+|:-------------|------:|---------:|-----------:|
+| **Sequential (0-999)** | 23.65% | 5.4 GiB/s | 1.4 GiB/s |
+| **Constant (all same)** | 18.97% | 2.8 GiB/s | 649 MiB/s |
+| **Random (full entropy)** | 100.22% | 23.5 GiB/s | 24.0 GiB/s |
 
 ### End-to-End Throughput (1M values)
 
 | Bit Width | Compress | Decompress |
 |:----------|---------:|-----------:|
-| 1-bit | 3-4 GiB/s | 100-170 MiB/s |
-| 8-bit | 7-13 GiB/s | 2-5 GiB/s |
-| 16-bit | 6-10 GiB/s | 3-6 GiB/s |
-| 24-bit | 3-4 GiB/s | 3 GiB/s |
-| 32-bit | 2-3 GiB/s | 8-12 GiB/s |
+| 1-bit | 13.7 GiB/s | 11.1 GiB/s |
+| 8-bit | 8.9 GiB/s | 16.0 GiB/s |
+| 16-bit | 7.1–7.5 GiB/s | 13.8–14.2 GiB/s |
+| 24-bit | 2.7 GiB/s | 5.4–5.8 GiB/s |
+| 32-bit | 7.9–8.3 GiB/s | 9.3–9.8 GiB/s |
 
-### Compression Ratios
+### Run Benchmarks
 
-| Data Pattern | Ratio |
-|:-------------|------:|
-| All zeros | ~2% |
-| Sequential (0-999) | 23.65% |
-| Constant (same value) | 18.97% |
-| Random (full entropy) | ~100% |
-
-Run benchmarks:
 ```bash
-cargo bench
+cargo bench                              # All benchmarks
+cargo bench --bench throughput_comparison # Scalar vs SSE kernels
+cargo bench --bench mixed_data            # Compression ratios + throughput
+cargo bench --bench compression           # End-to-end at scale
 ```
 
 ## Security
