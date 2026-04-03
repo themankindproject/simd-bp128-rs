@@ -35,7 +35,6 @@ const MAX_BIT_WIDTH: u8 = 32;
 pub struct SseBackend;
 
 impl SimdBackend for SseBackend {
-    #[inline(always)]
     fn pack_block(input: &[u32; 128], bit_width: u8, output: &mut [u8]) -> Result<(), Error> {
         #[cfg(target_arch = "x86_64")]
         unsafe {
@@ -45,7 +44,6 @@ impl SimdBackend for SseBackend {
         ScalarBackend::pack_block(input, bit_width, output)
     }
 
-    #[inline(always)]
     fn unpack_block(input: &[u8], bit_width: u8, output: &mut [u32; 128]) -> Result<(), Error> {
         #[cfg(target_arch = "x86_64")]
         unsafe {

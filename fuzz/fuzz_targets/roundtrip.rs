@@ -10,9 +10,14 @@ fuzz_target!(|data: &[u8]| {
     }
 
     // Convert bytes to u32 array (4 bytes per u32)
+    // Use chunks() instead of chunks_exact() so trailing bytes are not discarded
     let u32_data: Vec<u32> = data
-        .chunks_exact(4)
-        .map(|chunk| u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+        .chunks(4)
+        .map(|chunk| {
+            let mut bytes = [0u8; 4];
+            bytes[..chunk.len()].copy_from_slice(chunk);
+            u32::from_le_bytes(bytes)
+        })
         .collect();
 
     if u32_data.is_empty() {

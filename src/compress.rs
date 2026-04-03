@@ -22,6 +22,7 @@ use crate::{BLOCK_SIZE, FORMAT_VERSION};
 /// assert!(bytes_written < max_compressed_size(data.len()));
 /// ```
 #[inline]
+#[must_use]
 pub fn max_compressed_size(input_len: usize) -> usize {
     if input_len == 0 {
         return 0;
@@ -397,5 +398,21 @@ mod tests {
         // Must be at least the header (9 bytes) + bit_widths directory.
         let expected_blocks = (u32::MAX as usize + 127) / 128;
         assert!(size >= 9 + expected_blocks);
+    }
+
+    #[test]
+    fn test_compress_into_exact_size_buffer() {
+        // Verify compress_into works when the output buffer is exactly the
+        // worst-case size (max_compressed_size). The actual compressed data
+        // will be smaller, but the API requires the worst-case allocation.
+        let input: Vec<u32> = (0..256).map(|i| i % 1000).collect();
+        let compressed = compress(&input).unwrap();
+
+        // Allocate buffer at worst-case size
+        let max_size = max_compressed_size(input.len());
+        let mut buffer = vec![0u8; max_size];
+        let bytes_written = compress_into(&input, &mut buffer).unwrap();
+        assert_eq!(bytes_written, compressed.len());
+        assert_eq!(&buffer[..bytes_written], &compressed[..]);
     }
 }

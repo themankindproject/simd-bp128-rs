@@ -281,7 +281,7 @@ fn pack_4bit(input: &[u32], output: &mut [u8]) -> Result<(), Error> {
 #[inline]
 fn pack_8bit(input: &[u32], output: &mut [u8]) -> Result<(), Error> {
     for (i, &value) in input.iter().enumerate() {
-        // Mask is redundant for u32->u8 truncation but documents intent
+        // Truncation to u8 implicitly masks to the low 8 bits
         output[i] = value as u8;
     }
     Ok(())

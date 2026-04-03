@@ -16,6 +16,9 @@ pub(crate) enum BackendType {
     Scalar,
     #[cfg(target_arch = "x86_64")]
     Sse,
+    // AVX2 and AVX512 are detected but currently fall back to SSE
+    // because the SSE implementation is correct and feature-complete.
+    // Dedicated AVX2/AVX512 kernels are planned.
     #[cfg(target_arch = "x86_64")]
     Avx2,
     #[cfg(target_arch = "x86_64")]
@@ -50,7 +53,7 @@ pub(crate) fn get_backend() -> BackendType {
 ///
 /// Resolves the backend once so callers can use the pointer in a tight loop
 /// without repeated atomic loads from `OnceLock`.
-#[inline(always)]
+#[inline]
 pub(crate) fn get_pack_fn() -> PackFn {
     match get_backend() {
         BackendType::Scalar => ScalarBackend::pack_block,
@@ -60,7 +63,7 @@ pub(crate) fn get_pack_fn() -> PackFn {
 }
 
 /// Returns the unpack function pointer for the best available backend.
-#[inline(always)]
+#[inline]
 pub(crate) fn get_unpack_fn() -> UnpackFn {
     match get_backend() {
         BackendType::Scalar => ScalarBackend::unpack_block,

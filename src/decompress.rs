@@ -184,6 +184,12 @@ pub fn decompress_into(input: &[u8], output: &mut [u32]) -> Result<usize, Decomp
     let num_full_blocks = header.total_count / BLOCK_SIZE;
     let remaining = header.total_count % BLOCK_SIZE;
 
+    debug_assert_eq!(
+        header.num_blocks,
+        num_full_blocks + usize::from(remaining > 0),
+        "block count from header must match computed value"
+    );
+
     // Resolve backend once to avoid per-block atomic loads from OnceLock.
     let unpack: UnpackFn = get_unpack_fn();
 
@@ -460,17 +466,12 @@ mod tests {
 
         for case in test_cases {
             let result = decompress(&case);
-            // Should either succeed with empty/zero result or return error
-            // Should NEVER panic
-            match result {
-                Ok(data) => {
-                    // If it succeeds, verify it's reasonable
-                    assert!(data.len() <= MAX_DECOMPRESSED_VALUES);
-                }
-                Err(_) => {
-                    // Error is fine for malformed input
-                }
-            }
+            // Should NEVER panic — malformed inputs must return Err
+            assert!(
+                result.is_err(),
+                "expected error for malformed input, got Ok({:?})",
+                result.unwrap()
+            );
         }
     }
 
