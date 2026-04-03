@@ -6,6 +6,8 @@
 [![Build Status](https://img.shields.io/github/actions/workflow/status/themankindproject/simd-bp128/ci.yml)](https://github.com/themankindproject/simd-bp128/actions)
 ![Rust Version](https://img.shields.io/badge/rust-1.70%2B-blue)
 
+> **Note:** This release includes the **Scalar** and **SSE4.1** backends only. AVX2 and AVX-512 implementations are planned for a future release. On x86_64 CPUs with SSE4.1, the SSE4.1 backend is used automatically.
+
 High-performance BP128 compression for `u32` integer arrays with **SIMD acceleration**, **zero-allocation APIs**, and **deterministic encoding**.
 
 ## Overview
