@@ -166,7 +166,7 @@ println!("Worst case for 1024 values: {} bytes", max); // 522 bytes
 ### `decompress()`
 
 ```rust
-pub fn decompress(input: &[u8]) -> Result<Vec<u32>, DecompressionError>
+pub fn decompress(input: &[u8]) -> Result<Vec<u32>, Error>
 ```
 
 Decompresses BP128-encoded bytes back into a `Vec<u32>`.
@@ -176,7 +176,7 @@ Decompresses BP128-encoded bytes back into a `Vec<u32>`.
 
 **Returns:**
 - `Ok(Vec<u32>)` — Decompressed values
-- `Err(DecompressionError)` — If input is malformed (see error variants below)
+- `Err(Error)` — If input is malformed (wraps `DecompressionError`)
 
 **Example:**
 ```rust

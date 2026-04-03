@@ -56,29 +56,6 @@ impl SimdBackend for SseBackend {
     }
 }
 
-impl SseBackend {
-    /// Packs a partial block - falls back to scalar.
-    #[inline]
-    pub fn pack_partial_block(
-        input: &[u32],
-        bit_width: u8,
-        output: &mut [u8],
-    ) -> Result<(), Error> {
-        ScalarBackend::pack_partial_block(input, bit_width, output)
-    }
-
-    /// Unpacks a partial block - falls back to scalar.
-    #[inline]
-    pub fn unpack_partial_block(
-        input: &[u8],
-        bit_width: u8,
-        num_values: usize,
-        output: &mut [u32],
-    ) -> Result<(), Error> {
-        ScalarBackend::unpack_partial_block(input, bit_width, num_values, output)
-    }
-}
-
 #[cfg(target_arch = "x86_64")]
 mod sse_impl {
     use super::*;

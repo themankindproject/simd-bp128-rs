@@ -32,6 +32,13 @@ fn map_error(e: Error, data_pos: usize, packed_size: usize) -> DecompressionErro
     }
 }
 
+/// Parsed header fields returned by `decompressed_len`.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ParsedHeader {
+    pub total_count: usize,
+    pub num_blocks: usize,
+}
+
 /// Returns the number of `u32` values in compressed data without decompressing.
 ///
 /// Parses the header to extract the original input length. Useful for
@@ -63,8 +70,16 @@ fn map_error(e: Error, data_pos: usize, packed_size: usize) -> DecompressionErro
 /// assert_eq!(&data[..], &output[..count]);
 /// ```
 pub fn decompressed_len(input: &[u8]) -> Result<usize, DecompressionError> {
+    parse_header(input).map(|h| h.total_count)
+}
+
+/// Parses and validates the compressed header.
+fn parse_header(input: &[u8]) -> Result<ParsedHeader, DecompressionError> {
     if input.is_empty() {
-        return Ok(0);
+        return Ok(ParsedHeader {
+            total_count: 0,
+            num_blocks: 0,
+        });
     }
 
     if input.len() < HEADER_SIZE {
@@ -97,7 +112,7 @@ pub fn decompressed_len(input: &[u8]) -> Result<usize, DecompressionError> {
     }
 
     let expected_blocks = (total_count + BLOCK_SIZE - 1) / BLOCK_SIZE;
-    if total_count > 0 && num_blocks != expected_blocks {
+    if num_blocks != expected_blocks {
         return Err(DecompressionError::BlockCountMismatch {
             expected: expected_blocks,
             found: num_blocks,
@@ -121,7 +136,10 @@ pub fn decompressed_len(input: &[u8]) -> Result<usize, DecompressionError> {
         }
     }
 
-    Ok(total_count)
+    Ok(ParsedHeader {
+        total_count,
+        num_blocks,
+    })
 }
 
 /// Decompresses `input` into the provided `output` buffer.
@@ -151,21 +169,20 @@ pub fn decompress_into(input: &[u8], output: &mut [u32]) -> Result<usize, Decomp
         return Ok(0);
     }
 
-    let total_count = decompressed_len(input)?;
+    let header = parse_header(input)?;
 
-    if output.len() < total_count {
+    if output.len() < header.total_count {
         return Err(DecompressionError::OutputTooSmall {
-            need: total_count,
+            need: header.total_count,
             got: output.len(),
         });
     }
 
-    let num_blocks = u32::from_le_bytes([input[5], input[6], input[7], input[8]]) as usize;
-    let bit_widths = &input[HEADER_SIZE..HEADER_SIZE + num_blocks];
+    let bit_widths = &input[HEADER_SIZE..HEADER_SIZE + header.num_blocks];
 
-    let mut data_pos = HEADER_SIZE + num_blocks;
-    let num_full_blocks = total_count / BLOCK_SIZE;
-    let remaining = total_count % BLOCK_SIZE;
+    let mut data_pos = HEADER_SIZE + header.num_blocks;
+    let num_full_blocks = header.total_count / BLOCK_SIZE;
+    let remaining = header.total_count % BLOCK_SIZE;
 
     // Resolve backend once to avoid per-block atomic loads from OnceLock.
     let unpack: UnpackFn = get_unpack_fn();
@@ -250,7 +267,7 @@ pub fn decompress_into(input: &[u8], output: &mut [u32]) -> Result<usize, Decomp
         }
     }
 
-    Ok(total_count)
+    Ok(header.total_count)
 }
 
 /// Decompresses BP128-compressed data back to an array of `u32` integers.
@@ -283,7 +300,7 @@ pub fn decompress_into(input: &[u8], output: &mut [u32]) -> Result<usize, Decomp
 /// let decompressed = decompress(&compressed).unwrap();
 /// assert_eq!(data, decompressed);
 /// ```
-pub fn decompress(input: &[u8]) -> Result<Vec<u32>, DecompressionError> {
+pub fn decompress(input: &[u8]) -> Result<Vec<u32>, Error> {
     if input.is_empty() {
         return Ok(Vec::new());
     }
@@ -369,7 +386,9 @@ mod tests {
         let result = decompress(&compressed);
         assert!(matches!(
             result,
-            Err(DecompressionError::InvalidBitWidth { bit_width: 33 })
+            Err(Error::DecompressionError(
+                DecompressionError::InvalidBitWidth { bit_width: 33 }
+            ))
         ));
     }
 
@@ -380,7 +399,9 @@ mod tests {
         let result = decompress(&compressed);
         assert!(matches!(
             result,
-            Err(DecompressionError::HeaderTooSmall { needed: 9, have: 4 })
+            Err(Error::DecompressionError(
+                DecompressionError::HeaderTooSmall { needed: 9, have: 4 }
+            ))
         ));
     }
 
@@ -396,7 +417,9 @@ mod tests {
         let result = decompress(&compressed);
         assert!(matches!(
             result,
-            Err(DecompressionError::InputTooLarge { .. })
+            Err(Error::DecompressionError(
+                DecompressionError::InputTooLarge { .. }
+            ))
         ));
     }
 
@@ -453,15 +476,13 @@ mod tests {
 
     #[test]
     fn test_decompress_zero_values_with_blocks() {
-        // Edge case: 0 values but claims blocks exist
+        // Edge case: 0 values and 0 blocks — valid empty data
         let mut compressed = vec![];
         compressed.push(1); // version
         compressed.extend_from_slice(&0u32.to_le_bytes()); // input_len=0
-        compressed.extend_from_slice(&1u32.to_le_bytes()); // num_blocks=1
-        compressed.push(0); // bit_width=0
+        compressed.extend_from_slice(&0u32.to_le_bytes()); // num_blocks=0
 
         let result = decompress(&compressed);
-        // Should succeed with empty result (no values to decompress)
         assert!(result.is_ok());
         assert_eq!(result.unwrap().len(), 0);
     }
@@ -478,5 +499,51 @@ mod tests {
         // Should still decompress correctly (ignoring extra data)
         let decompressed = decompress(&compressed).unwrap();
         assert_eq!(input, decompressed);
+    }
+
+    #[test]
+    fn test_decompress_into_empty() {
+        let mut output = [0xDEAD_BEEFu32; 1];
+        let result = decompress_into(&[], &mut output);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 0);
+    }
+
+    #[test]
+    fn test_decompress_into_zero_block_overwrites_garbage() {
+        // All-zeros input produces bit_width=0 blocks; verify the output
+        // is zeroed even when the buffer contains garbage.
+        let input = vec![0u32; 128];
+        let compressed = compress::compress(&input).unwrap();
+        let mut output = [0xFFFF_FFFFu32; 128];
+        let count = decompress_into(&compressed, &mut output).unwrap();
+        assert_eq!(count, 128);
+        assert!(output.iter().all(|&v| v == 0));
+    }
+
+    #[test]
+    fn test_decompress_into_zero_partial_block_overwrites_garbage() {
+        // 1 value (zero) = 1 partial block with bit_width=0
+        let input = vec![0u32; 1];
+        let compressed = compress::compress(&input).unwrap();
+        let mut output = [0xFFFF_FFFFu32; 1];
+        let count = decompress_into(&compressed, &mut output).unwrap();
+        assert_eq!(count, 1);
+        assert_eq!(output[0], 0);
+    }
+
+    #[test]
+    fn test_decompress_into_output_too_small() {
+        let input: Vec<u32> = (0..256).collect();
+        let compressed = compress::compress(&input).unwrap();
+        let mut output = vec![0u32; 100]; // smaller than 256
+        let result = decompress_into(&compressed, &mut output);
+        assert!(matches!(
+            result,
+            Err(DecompressionError::OutputTooSmall {
+                need: 256,
+                got: 100
+            })
+        ));
     }
 }

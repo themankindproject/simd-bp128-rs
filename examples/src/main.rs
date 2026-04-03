@@ -1,4 +1,4 @@
-use simd_bp128::{compress, decompress, DecompressionError};
+use simd_bp128::{compress, decompress, DecompressionError, Error};
 
 fn main() {
     basic_example();
@@ -54,7 +54,9 @@ fn error_handling_example() {
     let result = decompress(&truncated);
     assert!(matches!(
         result,
-        Err(DecompressionError::TruncatedData { .. })
+        Err(Error::DecompressionError(
+            DecompressionError::TruncatedData { .. }
+        ))
     ));
 
     let mut invalid: Vec<u8> = vec![];
@@ -63,10 +65,12 @@ fn error_handling_example() {
     invalid.extend_from_slice(&1u32.to_le_bytes());
     invalid.push(33);
 
-    let result: Result<Vec<u32>, DecompressionError> = decompress(&invalid);
+    let result = decompress(&invalid);
     assert!(matches!(
         result,
-        Err(DecompressionError::InvalidBitWidth { bit_width: 33 })
+        Err(Error::DecompressionError(
+            DecompressionError::InvalidBitWidth { bit_width: 33 }
+        ))
     ));
 
     println!("Errors: OK");
