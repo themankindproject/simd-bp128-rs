@@ -294,22 +294,22 @@ mod sse_impl {
         let mask = (1u32 << bits) - 1;
         let mask_vec = _mm_set1_epi32(mask as i32);
 
+        let required = (BLOCK_SIZE * bits as usize + 7) / 8;
+        let output = &mut output[..required];
+
         let mut acc: u64 = 0;
         let mut acc_bits: usize = 0;
         let mut out_idx: usize = 0;
+        let mut tmp = [0u32; 4];
 
         for i in 0..32 {
             let in_ptr = input.as_ptr().add(i * 4);
 
             let v = _mm_loadu_si128(in_ptr as *const __m128i);
             let masked = _mm_and_si128(v, mask_vec);
+            _mm_storeu_si128(tmp.as_mut_ptr() as *mut __m128i, masked);
 
-            let val0 = _mm_extract_epi32(masked, 0) as u32;
-            let val1 = _mm_extract_epi32(masked, 1) as u32;
-            let val2 = _mm_extract_epi32(masked, 2) as u32;
-            let val3 = _mm_extract_epi32(masked, 3) as u32;
-
-            for val in [val0, val1, val2, val3] {
+            for &val in tmp.iter() {
                 acc |= (val as u64) << acc_bits;
                 acc_bits += bits as usize;
                 while acc_bits >= 8 {
@@ -560,6 +560,9 @@ mod sse_impl {
         bits: u8,
     ) -> Result<(), Error> {
         let mask = (1u64 << bits) - 1;
+
+        let required = (BLOCK_SIZE * bits as usize + 7) / 8;
+        let input = &input[..required];
 
         let mut acc: u64 = 0;
         let mut acc_bits: usize = 0;

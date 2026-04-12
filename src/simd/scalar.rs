@@ -231,12 +231,14 @@ macro_rules! define_pack_accumulator {
             const BITS: usize = $bits;
             const MASK: u64 = $mask;
 
-            let num_values = input.len();
+            let required = (input.len() * BITS + 7) / 8;
+            let output = &mut output[..required];
+
             let mut acc: u64 = 0;
             let mut acc_bits: usize = 0;
             let mut out_idx: usize = 0;
 
-            for &val in input.iter().take(num_values) {
+            for &val in input {
                 acc |= ((val as u64) & MASK) << acc_bits;
                 acc_bits += BITS;
 
@@ -435,11 +437,15 @@ macro_rules! define_unpack_accumulator {
             const BITS: usize = $bits;
             const MASK: u64 = $mask;
 
+            let required = (num_values * BITS + 7) / 8;
+            let input = &input[..required];
+            let output = &mut output[..num_values];
+
             let mut acc: u64 = 0;
             let mut acc_bits: usize = 0;
             let mut in_idx: usize = 0;
 
-            for out in output.iter_mut().take(num_values) {
+            for out in output {
                 while acc_bits < BITS {
                     acc |= (input[in_idx] as u64) << acc_bits;
                     acc_bits += 8;
@@ -454,34 +460,6 @@ macro_rules! define_unpack_accumulator {
             Ok(())
         }
     };
-}
-
-#[inline]
-fn unpack_3bit(input: &[u8], num_values: usize, output: &mut [u32]) -> Result<(), Error> {
-    let required = (num_values * 3 + 7) / 8;
-    debug_assert!(
-        input.len() >= required,
-        "unpack_3bit: input buffer too small, need {} bytes",
-        required
-    );
-
-    let mut acc: u64 = 0;
-    let mut acc_bits: usize = 0;
-    let mut in_idx: usize = 0;
-
-    for out in output.iter_mut().take(num_values) {
-        while acc_bits < 3 {
-            acc |= (input[in_idx] as u64) << acc_bits;
-            acc_bits += 8;
-            in_idx += 1;
-        }
-
-        *out = (acc & 0x7) as u32;
-        acc >>= 3;
-        acc_bits -= 3;
-    }
-
-    Ok(())
 }
 
 #[inline]
@@ -541,6 +519,7 @@ fn unpack_32bit(input: &[u8], num_values: usize, output: &mut [u32]) -> Result<(
     Ok(())
 }
 
+define_unpack_accumulator!(unpack_3bit, 3, 0x7);
 define_unpack_accumulator!(unpack_5bit, 5, 0x1F);
 define_unpack_accumulator!(unpack_6bit, 6, 0x3F);
 define_unpack_accumulator!(unpack_7bit, 7, 0x7F);
