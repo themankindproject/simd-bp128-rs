@@ -165,7 +165,7 @@ fn parse_header(input: &[u8]) -> Result<ParsedHeader, DecompressionError> {
 ///
 /// - Time complexity: O(n) where n = number of decompressed values
 /// - Space complexity: O(1) — no heap allocation
-/// - Automatically selects the best available SIMD backend (SSE4.1 on x86_64, scalar fallback otherwise)
+/// - Automatically selects the best available SIMD backend (AVX2 / SSE4.1 on x86_64, scalar fallback otherwise)
 ///
 /// # Errors
 ///

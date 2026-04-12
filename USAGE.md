@@ -32,7 +32,7 @@ Add the dependency to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-packsimd = "0.1"
+packsimd = "0.2"
 ```
 
 ### Basic Example

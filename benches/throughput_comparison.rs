@@ -1,4 +1,4 @@
-//! Scalar vs SSE block-level kernel comparison.
+//! Scalar vs SSE vs AVX2 block-level kernel comparison.
 //!
 //! Run with: cargo bench --bench throughput_comparison
 //!
@@ -13,7 +13,7 @@ use std::hint::black_box;
 use std::time::Duration;
 
 #[cfg(target_arch = "x86_64")]
-use packsimd::internal::SseBackend;
+use packsimd::internal::{Avx2Backend, SseBackend};
 
 fn generate_block(bits: u32) -> [u32; 128] {
     let mut rng = StdRng::seed_from_u64(42);
@@ -34,8 +34,8 @@ fn packed_bytes(bits: u32) -> usize {
 }
 
 fn benchmark_scalar_vs_sse(c: &mut Criterion) {
-    let mut group = c.benchmark_group("scalar_vs_sse");
-    group.measurement_time(Duration::from_secs(5));
+    let mut group = c.benchmark_group("scalar_vs_sse_vs_avx2");
+    group.measurement_time(Duration::from_secs(3));
     group.sample_size(100);
 
     for bits in [1u8, 2, 4, 8, 16, 24, 32] {
@@ -47,10 +47,16 @@ fn benchmark_scalar_vs_sse(c: &mut Criterion) {
         let mut scalar_unpacked = [0u32; 128];
         let mut sse_packed = vec![0u8; bytes_needed];
         let mut sse_unpacked = [0u32; 128];
+        #[cfg(target_arch = "x86_64")]
+        let mut avx2_packed = vec![0u8; bytes_needed];
+        #[cfg(target_arch = "x86_64")]
+        let mut avx2_unpacked = [0u32; 128];
 
         ScalarBackend::pack_block(&block, bits, &mut scalar_packed).unwrap();
         #[cfg(target_arch = "x86_64")]
         SseBackend::pack_block(&block, bits, &mut sse_packed).unwrap();
+        #[cfg(target_arch = "x86_64")]
+        Avx2Backend::pack_block(&block, bits, &mut avx2_packed).unwrap();
 
         group.throughput(Throughput::Bytes(input_bytes as u64));
         group.bench_function(format!("scalar_pack_{}bit", bits), |b| {
@@ -73,6 +79,18 @@ fn benchmark_scalar_vs_sse(c: &mut Criterion) {
                         black_box(&block),
                         black_box(bits),
                         black_box(&mut sse_packed),
+                    )
+                    .unwrap();
+                });
+            });
+
+            group.throughput(Throughput::Bytes(input_bytes as u64));
+            group.bench_function(format!("avx2_pack_{}bit", bits), |b| {
+                b.iter(|| {
+                    Avx2Backend::pack_block(
+                        black_box(&block),
+                        black_box(bits),
+                        black_box(&mut avx2_packed),
                     )
                     .unwrap();
                 });
@@ -100,6 +118,18 @@ fn benchmark_scalar_vs_sse(c: &mut Criterion) {
                         black_box(&sse_packed),
                         black_box(bits),
                         black_box(&mut sse_unpacked),
+                    )
+                    .unwrap();
+                });
+            });
+
+            group.throughput(Throughput::Bytes(bytes_needed as u64));
+            group.bench_function(format!("avx2_unpack_{}bit", bits), |b| {
+                b.iter(|| {
+                    Avx2Backend::unpack_block(
+                        black_box(&avx2_packed),
+                        black_box(bits),
+                        black_box(&mut avx2_unpacked),
                     )
                     .unwrap();
                 });

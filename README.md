@@ -6,9 +6,7 @@
 [![Build Status](https://img.shields.io/github/actions/workflow/status/themankindproject/simd-bp128-rs/ci.yml)](https://github.com/themankindproject/packsimd/actions)
 ![Rust Version](https://img.shields.io/badge/rust-1.70%2B-blue)
 
-> **Note:** This release includes the **Scalar** and **SSE4.1** backends only. AVX2 and AVX-512 implementations are planned for a future release. On x86_64 CPUs with SSE4.1, the SSE4.1 backend is used automatically.
-
-High-performance BP128 compression for `u32` integer arrays with **SIMD acceleration**, **zero-allocation APIs**, and **deterministic encoding**.
+High-performance BP128 compression for `u32` integer arrays with **SIMD acceleration**, **zero-allocation APIs**, and **deterministic encoding**. The crate ships **scalar**, **SSE4.1**, and **AVX2** backends and selects the best one at runtime. AVX-512 is planned for a future release.
 
 ## Overview
 
@@ -25,7 +23,7 @@ High-performance BP128 compression for `u32` integer arrays with **SIMD accelera
 ## Features
 
 - **BP128 Algorithm** — Variable bit-width packing, 128 values per block
-- **SIMD Acceleration** — SSE4.1 on x86_64 with automatic runtime detection
+- **SIMD Acceleration** — AVX2 and SSE4.1 on x86_64 with automatic runtime detection
 - **Scalar Fallback** — Reference implementation for non-SIMD targets
 - **Zero-Allocation API** — `compress_into` / `decompress_into` with pre-allocated buffers
 - **Fast Header Inspection** — `decompressed_len` reads size without decompressing
@@ -38,7 +36,7 @@ High-performance BP128 compression for `u32` integer arrays with **SIMD accelera
 
 ```toml
 [dependencies]
-packsimd = "0.1"
+packsimd = "0.2"
 ```
 
 ## Quick Start
@@ -99,7 +97,7 @@ For complete API reference and usage examples, see [USAGE.md](USAGE.md).
        │               │               │
   ┌────┴────┐    ┌─────┴─────┐   ┌────┴────┐
   │ Scalar  │    │   SSE4.1  │   │  AVX2   │
-  │Backend  │    │  Backend  │   │(planned)│
+  │Backend  │    │  Backend  │   │ Backend │
   │         │    │           │   │         │
   │Reference│    │  128-bit  │   │ 256-bit │
   │  impl   │    │   SIMD    │   │  SIMD   │
@@ -114,6 +112,7 @@ For complete API reference and usage examples, see [USAGE.md](USAGE.md).
 | **dispatch** | Runtime SIMD backend selection and caching |
 | **simd/scalar** | Reference scalar implementation (all bit widths) |
 | **simd/sse** | SSE4.1-accelerated kernels (x86_64 only) |
+| **simd/avx2** | AVX2-accelerated kernels for byte-aligned widths and 1-bit pack (x86_64 only) |
 
 ## Performance
 
@@ -193,7 +192,8 @@ cargo doc --no-deps --open
 |:--------|:-------|
 | Scalar implementation | Done |
 | SSE4.1 backend | Done |
-| AVX2 backend | Planned |
+| AVX2 backend | Done |
+| BMI2 PDEP/PEXT for irregular widths | Planned |
 | AVX-512 backend | Planned |
 
 ## License

@@ -67,7 +67,7 @@
 //!
 //! - **Compression**: O(n) time complexity where n = input.len()
 //! - **Decompression**: O(n) time complexity
-//! - **SIMD Support**: Automatic detection and use of SSE4.1 on x86_64, with scalar fallback
+//! - **SIMD Support**: Automatic runtime detection of AVX2 / SSE4.1 on x86_64, with scalar fallback
 //! - **Throughput**: Typically 3-10 GB/s depending on bit width and CPU
 //!
 //! # Safety
@@ -106,7 +106,10 @@ pub(crate) const FORMAT_VERSION: u8 = 1;
 /// any point. Do not depend on them from outside this crate.
 #[doc(hidden)]
 pub mod internal {
+    #[cfg(target_arch = "x86_64")]
+    pub use crate::simd::avx2::Avx2Backend;
     pub use crate::simd::scalar::ScalarBackend;
+    #[cfg(target_arch = "x86_64")]
     pub use crate::simd::sse::SseBackend;
     pub use crate::simd::SimdBackend;
 }

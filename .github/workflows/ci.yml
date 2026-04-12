@@ -8,10 +8,14 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+          - windows-latest
         rust:
           - stable
           - beta
@@ -25,6 +29,18 @@ jobs:
       - run: cargo test --test correctness
       - run: cargo test --test edge_cases
       - run: cargo test --tests --all-features
+
+  test-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+      - run: cargo test --release --lib
+      - run: cargo test --release --test correctness
+      - run: cargo test --release --test edge_cases
+      - run: cargo test --release --doc
 
   clippy:
     runs-on: ubuntu-latest
@@ -55,6 +71,23 @@ jobs:
           toolchain: stable
       - run: cargo test --doc
 
+  miri:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly
+          components: miri
+      # Miri cannot interpret x86 SIMD intrinsics, so the dispatch layer
+      # forces the scalar backend under cfg(miri). This run validates the
+      # public API and the scalar reference under interpretation; it skips
+      # the SSE/AVX2 module-internal tests, which would still attempt to
+      # call intrinsics directly.
+      - run: cargo miri test --lib -- --skip simd::sse::tests --skip simd::avx2::tests
+      - run: cargo miri test --test correctness
+      - run: cargo miri test --test edge_cases
+
   fuzz:
     runs-on: ubuntu-latest
     steps:
@@ -65,8 +98,8 @@ jobs:
       - name: Install cargo-fuzz
         run: cargo install cargo-fuzz
       - name: Run fuzz_roundtrip
-        run: cargo fuzz run roundtrip -- -max_total_time=60s -timeout=10s || true
+        run: cargo fuzz run roundtrip -- -max_total_time=300s -timeout=10s
       - name: Run fuzz_compress_only
-        run: cargo fuzz run compress_only -- -max_total_time=60s -timeout=10s || true
+        run: cargo fuzz run compress_only -- -max_total_time=300s -timeout=10s
       - name: Run fuzz_decompress_only
-        run: cargo fuzz run decompress_only -- -max_total_time=60s -timeout=10s || true
+        run: cargo fuzz run decompress_only -- -max_total_time=300s -timeout=10s

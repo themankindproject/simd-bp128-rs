@@ -80,7 +80,7 @@ pub fn max_compressed_size(input_len: usize) -> usize {
 ///
 /// - Time complexity: O(n) where n = `input.len()`
 /// - Space complexity: O(1) — no heap allocation
-/// - Automatically selects the best available SIMD backend (SSE4.1 on x86_64, scalar fallback otherwise)
+/// - Automatically selects the best available SIMD backend (AVX2 / SSE4.1 on x86_64, scalar fallback otherwise)
 ///
 /// # Errors
 ///
