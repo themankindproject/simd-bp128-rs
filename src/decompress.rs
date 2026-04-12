@@ -10,11 +10,11 @@ const HEADER_SIZE: usize = 9;
 
 /// Maps a generic `Error` from the unpack backend to a `DecompressionError`.
 ///
-/// Only `InvalidBitWidth` and `InputTooShort` are expected during
-/// decompression. `OutputTooSmall` and `CompressionError` indicate an
-/// internal logic error (the caller should have validated buffer sizes
-/// before invoking the backend).
-fn map_error(e: Error, data_pos: usize, packed_size: usize) -> DecompressionError {
+/// Backend unpack functions only ever return `InvalidBitWidth`,
+/// `InputTooShort`, or `OutputTooSmall`. The wrapped `CompressionError` /
+/// `DecompressionError` variants are unreachable from this path; if one
+/// ever appears it indicates a backend bug, not a malformed input.
+fn map_error(e: Error, data_pos: usize) -> DecompressionError {
     match e {
         Error::InvalidBitWidth(bw) => DecompressionError::InvalidBitWidth { bit_width: bw },
         Error::InputTooShort { need, got } => DecompressionError::TruncatedData {
@@ -23,12 +23,9 @@ fn map_error(e: Error, data_pos: usize, packed_size: usize) -> DecompressionErro
             have: got,
         },
         Error::OutputTooSmall { need, got } => DecompressionError::OutputTooSmall { need, got },
-        Error::CompressionError(_) => DecompressionError::TruncatedData {
-            position: data_pos,
-            needed: packed_size,
-            have: 0,
-        },
-        Error::DecompressionError(inner) => inner,
+        Error::CompressionError(_) | Error::DecompressionError(_) => {
+            unreachable!("backend unpack functions never produce {e:?}")
+        }
     }
 }
 
@@ -262,8 +259,7 @@ pub fn decompress_into(input: &[u8], output: &mut [u32]) -> Result<usize, Decomp
             .try_into()
             .expect("output slice has exactly BLOCK_SIZE elements");
 
-        unpack(packed_data, bit_width, output_block)
-            .map_err(|e| map_error(e, data_pos, packed_size))?;
+        unpack(packed_data, bit_width, output_block).map_err(|e| map_error(e, data_pos))?;
 
         data_pos = data_end;
     }
@@ -300,7 +296,7 @@ pub fn decompress_into(input: &[u8], output: &mut [u32]) -> Result<usize, Decomp
                 remaining,
                 &mut output[write_pos..write_pos + remaining],
             )
-            .map_err(|e| map_error(e, data_pos, packed_size))?;
+            .map_err(|e| map_error(e, data_pos))?;
         } else {
             output[write_pos..write_pos + remaining].fill(0);
         }

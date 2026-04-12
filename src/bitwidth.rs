@@ -32,10 +32,7 @@ pub(crate) fn required_bit_width(max_value: u32) -> u8 {
 /// Returns the number of bytes needed to store a full 128-value block.
 #[inline]
 pub(crate) fn packed_block_size(bit_width: u8) -> usize {
-    debug_assert!(bit_width <= 32, "bit_width must be 0-32, got {bit_width}");
-    if bit_width > 32 {
-        return 0;
-    }
+    assert!(bit_width <= 32, "bit_width must be 0-32, got {bit_width}");
     if bit_width == 0 {
         0
     } else {
