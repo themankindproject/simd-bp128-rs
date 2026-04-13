@@ -85,7 +85,9 @@ jobs:
       # the SSE/AVX2 module-internal tests, which would still attempt to
       # call intrinsics directly.
       - run: cargo miri test --lib -- --skip simd::sse::tests --skip simd::avx2::tests
-      - run: cargo miri test --test correctness
+      # proptest's FileFailurePersistence calls std::env::current_dir(),
+      # which Miri's default isolation blocks. Skip the prop_* tests.
+      - run: cargo miri test --test correctness -- --skip prop_
       - run: cargo miri test --test edge_cases
 
   fuzz:
